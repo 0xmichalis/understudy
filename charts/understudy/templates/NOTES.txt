@@ -1,0 +1,23 @@
+Understudy is installed.
+
+Give a Deployment an understudy:
+
+  apiVersion: apps.understudy.dev/v1alpha1
+  kind: Understudy
+  metadata:
+    name: my-service
+    namespace: my-namespace
+  spec:
+    targetRef:
+      name: my-service        # a Deployment in the same namespace
+    hostageMode: always       # always | voluntary-only | off
+    minSurgeTimeSeconds: 60   # your realistic signal -> traffic-ready time
+    readinessDeadlineSeconds: 600
+
+Alert on the metric understudy_oldest_blocked_eviction_seconds: a blocked
+drain must page a human, never wedge a node.
+
+ESCAPE HATCH - if the operator is ever gone while its PDBs still block
+drains, every PDB it owns is labeled for one-command removal:
+
+  kubectl delete pdb -A -l understudy.dev/owned=true

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: understudy
+description: >-
+  HA with 1 replica. Understudy spins up a temporary stand-in pod that gets
+  traffic-ready before the original is allowed to leave a doomed node -
+  surviving drains, upgrades, consolidation and spot reclaims without paying
+  for a second replica.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.34.0-0"
+keywords:
+  - availability
+  - spot
+  - eviction
+  - pdb
+  - node-drain
+  - karpenter
+  - cluster-autoscaler
+home: https://github.com/understudy-k8s/understudy
+sources:
+  - https://github.com/understudy-k8s/understudy

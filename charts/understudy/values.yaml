@@ -1,0 +1,39 @@
+image:
+  repository: ghcr.io/understudy-k8s/understudy
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+signals:
+  cordonAdapter: true
+  taintAdapter: true
+  doomTaintKeys:
+    - karpenter.sh/disrupted
+    - ToBeDeletedByClusterAutoscaler
+    - DeletionCandidateOfClusterAutoscaler
+
+leaderElection:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+metrics:
+  bindAddress: ":8080"
+  secure: false

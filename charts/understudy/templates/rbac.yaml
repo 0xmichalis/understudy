@@ -1,0 +1,80 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "understudy.fullname" . }}
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps.understudy.dev"]
+    resources: ["understudies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps.understudy.dev"]
+    resources: ["understudies/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["apps.understudy.dev"]
+    resources: ["understudies/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "understudy.fullname" . }}
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "understudy.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "understudy.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "understudy.fullname" . }}-leader-election
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "understudy.fullname" . }}-leader-election
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "understudy.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "understudy.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
