@@ -24,7 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/understudy-k8s/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/signal"
 )
 
 func nodeWith(key, value string) *corev1.Node {

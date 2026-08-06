@@ -17,6 +17,6 @@ keywords:
   - node-drain
   - karpenter
   - cluster-autoscaler
-home: https://github.com/understudy-k8s/understudy
+home: https://github.com/kylan11/understudy
 sources:
-  - https://github.com/understudy-k8s/understudy
+  - https://github.com/kylan11/understudy

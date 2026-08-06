@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/understudy-k8s/understudy/internal/metrics"
-	"github.com/understudy-k8s/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/metrics"
+	"github.com/kylan11/understudy/internal/signal"
 )
 
 const (

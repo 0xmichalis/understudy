@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/understudy-k8s/understudy/internal/signal/taint"
+	"github.com/kylan11/understudy/internal/signal/taint"
 )
 
 func awsServer(t *testing.T, action string, rebalance bool) *httptest.Server {

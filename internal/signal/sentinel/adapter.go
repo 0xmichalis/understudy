@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/understudy-k8s/understudy/internal/signal/taint"
+	"github.com/kylan11/understudy/internal/signal/taint"
 )
 
 type Runner struct {

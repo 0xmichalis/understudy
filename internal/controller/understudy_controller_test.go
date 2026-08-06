@@ -32,8 +32,8 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	appsv1alpha1 "github.com/understudy-k8s/understudy/api/v1alpha1"
-	"github.com/understudy-k8s/understudy/internal/signal"
+	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
+	"github.com/kylan11/understudy/internal/signal"
 )
 
 var nsCounter int

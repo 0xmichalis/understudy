@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	appsv1alpha1 "github.com/understudy-k8s/understudy/api/v1alpha1"
+	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
 )
 
 func evict(pod *corev1.Pod, dryRun bool) error {

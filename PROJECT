@@ -7,7 +7,7 @@ domain: understudy.dev
 layout:
 - go.kubebuilder.io/v4
 projectName: understudy
-repo: github.com/understudy-k8s/understudy
+repo: github.com/kylan11/understudy
 resources:
 - api:
     crdVersion: v1
@@ -16,6 +16,6 @@ resources:
   domain: understudy.dev
   group: apps
   kind: Understudy
-  path: github.com/understudy-k8s/understudy/api/v1alpha1
+  path: github.com/kylan11/understudy/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/understudy-k8s/understudy/internal/signal/sentinel"
+	"github.com/kylan11/understudy/internal/signal/sentinel"
 )
 
 var scheme = runtime.NewScheme()

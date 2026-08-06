@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/understudy-k8s/understudy/test/utils"
+	"github.com/kylan11/understudy/test/utils"
 )
 
 const namespace = "understudy-system"

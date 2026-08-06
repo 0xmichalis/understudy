@@ -1,4 +1,4 @@
-module github.com/understudy-k8s/understudy
+module github.com/kylan11/understudy
 
 go 1.26.0
 

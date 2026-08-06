@@ -35,12 +35,12 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	appsv1alpha1 "github.com/understudy-k8s/understudy/api/v1alpha1"
-	"github.com/understudy-k8s/understudy/internal/controller"
-	"github.com/understudy-k8s/understudy/internal/signal"
-	"github.com/understudy-k8s/understudy/internal/signal/cordon"
-	"github.com/understudy-k8s/understudy/internal/signal/evictionwebhook"
-	"github.com/understudy-k8s/understudy/internal/signal/taint"
+	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
+	"github.com/kylan11/understudy/internal/controller"
+	"github.com/kylan11/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/signal/cordon"
+	"github.com/kylan11/understudy/internal/signal/evictionwebhook"
+	"github.com/kylan11/understudy/internal/signal/taint"
 	// +kubebuilder:scaffold:imports
 )
 

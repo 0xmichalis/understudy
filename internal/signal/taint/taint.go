@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/understudy-k8s/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/signal"
 )
 
 var DefaultKeys = []string{

@@ -38,9 +38,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	appsv1alpha1 "github.com/understudy-k8s/understudy/api/v1alpha1"
-	"github.com/understudy-k8s/understudy/internal/metrics"
-	"github.com/understudy-k8s/understudy/internal/signal"
+	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
+	"github.com/kylan11/understudy/internal/metrics"
+	"github.com/kylan11/understudy/internal/signal"
 )
 
 const (
