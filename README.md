@@ -1,5 +1,11 @@
 # Understudy
 
+[![Release](https://img.shields.io/github/v/release/kylan11/understudy?style=for-the-badge&label=release&color=1f6feb)](https://github.com/kylan11/understudy/releases)
+[![Last commit](https://img.shields.io/github/last-commit/kylan11/understudy?style=for-the-badge&color=2ea043)](https://github.com/kylan11/understudy/commits/main)
+[![Build](https://img.shields.io/github/actions/workflow/status/kylan11/understudy/ci.yaml?branch=main&style=for-the-badge&label=build)](https://github.com/kylan11/understudy/actions/workflows/ci.yaml)
+[![Go version](https://img.shields.io/github/go-mod/go-version/kylan11/understudy?style=for-the-badge)](go.mod)
+[![License](https://img.shields.io/github/license/kylan11/understudy?style=for-the-badge)](LICENSE)
+
 **Best-effort high availability with one replica.** Understudy keeps
 single-replica workloads serving through node drains, upgrades, consolidation
 and spot reclaims, without paying for a second replica around the clock. Best
