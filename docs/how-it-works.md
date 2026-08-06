@@ -132,11 +132,19 @@ this operator owns, so an unrelated eviction on the same node does not disturb
 your workload. The webhook is fail-open: if the operator is down, evictions are
 admitted normally.
 
-**Cloud sentinels** are an optional DaemonSet that reads the cloud's
-termination notice and taints its own node with the deadline. Reporting through
-a taint rather than a network call means the signal survives an operator
-restart, is visible in `kubectl describe node`, and, because the taint carries
-`NoSchedule`, keeps the replacement pod off the dying node for free.
+**Cloud sentinels** are the only optional component, and they are off by
+default. Nothing else depends on them: the three adapters above run inside the
+operator pod, and on Karpenter clusters even spot interruptions arrive without
+a sentinel, as the taint Karpenter applies when it consumes its interruption
+queue. What a sentinel adds is the deadline. It is a DaemonSet that reads the
+cloud's termination notice, which is only served on the instance's own
+link-local metadata endpoint, and taints its own node with the time remaining.
+Reporting through a taint rather than a network call means the signal survives
+an operator restart, is visible in `kubectl describe node`, and, because the
+taint carries `NoSchedule`, keeps the replacement pod off the dying node for
+free. Scope it to preemptible node pools; if you skip it entirely, set
+`readinessDeadlineSeconds` below the platform notice window for spot
+workloads.
 
 | Cloud | Source | Notice |
 |---|---|---|

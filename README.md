@@ -82,15 +82,36 @@ Then protect a workload by creating an `Understudy` next to it. `kubectl get
 understudies` shows the target, the mode, the phase, and how long anything has
 been blocked.
 
+The footprint of the default install is one Deployment with one replica. The
+webhook is served from that same pod, and a small CronJob acts as a dead man's
+switch for the operator's own budgets. There is no DaemonSet and no per-node
+agent. Drains, Karpenter disruption, autoscaler scale-downs and node upgrades
+are all detected from the API server by the operator pod alone, and on
+Karpenter clusters that includes spot interruptions, because Karpenter reacts
+to the interruption queue by tainting the node and the operator sees the
+taint.
+
 On clusters where every node carries a taint, the operator needs a matching
 toleration and node selector, the same as any other controller you run there.
 
-### Cloud sentinels
+### Cloud sentinels (optional, off by default)
 
-Optional, and only useful on preemptible or spot capacity. The sentinel is a
-DaemonSet that reads the cloud's termination notice and tells the operator how
-long is left, which is what lets the operator decide between holding the
-eviction and releasing it immediately.
+Everything above works without this section. Skipping it is a reasonable
+choice, and if you do, the one thing to remember is to set
+`readinessDeadlineSeconds` below your platform's spot notice window, so the
+operator never holds an eviction against a deadline it cannot see.
+
+What the sentinel adds is the deadline itself. Without it, a spot interruption
+reaches the operator as an ordinary drainer taint, indistinguishable from an
+unbounded drain. The sentinel reads the cloud's termination notice on the
+node and passes along how long is actually left, which is what lets the
+operator choose between holding the eviction and releasing it immediately. It
+also shaves about 15 seconds off the reaction time compared to the queue path.
+
+It is a DaemonSet only because every cloud serves termination notices on a
+link-local metadata endpoint that nothing outside the instance can read.
+Scope it to the node pools that can actually be preempted; it has no business
+running anywhere else.
 
 ```sh
 helm upgrade understudy ./charts/understudy \
@@ -133,7 +154,7 @@ provider-specific code:
 | Cordon watch | `kubectl drain`, GKE and AKS and EKS upgrades, cluster-autoscaler, kured |
 | Taint watch | Karpenter, cluster-autoscaler, plus any key you configure |
 | Eviction webhook | every eviction attempt from every drainer, including ones nothing else detects |
-| Cloud sentinel | spot and preemptible notices, with their deadlines |
+| Cloud sentinel (optional, off by default) | spot and preemptible notices, with their deadlines |
 
 ## Safety
 
