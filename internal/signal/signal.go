@@ -17,6 +17,7 @@ limitations under the License.
 package signal
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -34,10 +35,15 @@ const (
 )
 
 type NodeDoom struct {
-	Node     string
-	Class    Class
-	Deadline *time.Time
-	Source   string
+	Node      string
+	Class     Class
+	Deadline  *time.Time
+	ExpiresAt *time.Time
+	Source    string
+}
+
+func (d NodeDoom) expired(now time.Time) bool {
+	return d.ExpiresAt != nil && now.After(*d.ExpiresAt)
 }
 
 type Adapter interface {
@@ -89,6 +95,7 @@ func (r *Registry) Clear(node, source string) {
 }
 
 func (r *Registry) Lookup(node string) (NodeDoom, bool) {
+	now := time.Now()
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	bySource, ok := r.dooms[node]
@@ -98,12 +105,53 @@ func (r *Registry) Lookup(node string) (NodeDoom, bool) {
 	var best NodeDoom
 	first := true
 	for _, d := range bySource {
+		if d.expired(now) {
+			continue
+		}
 		if first || moreUrgent(d, best) {
 			best = d
 			first = false
 		}
 	}
+	if first {
+		return NodeDoom{}, false
+	}
 	return best, true
+}
+
+func (r *Registry) StartJanitor(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.sweep(time.Now())
+			}
+		}
+	}()
+}
+
+func (r *Registry) sweep(now time.Time) {
+	var affected []string
+	r.mu.Lock()
+	for node, bySource := range r.dooms {
+		for source, d := range bySource {
+			if d.expired(now) {
+				delete(bySource, source)
+				affected = append(affected, node)
+			}
+		}
+		if len(bySource) == 0 {
+			delete(r.dooms, node)
+		}
+	}
+	r.mu.Unlock()
+	for _, node := range affected {
+		r.notify(node)
+	}
 }
 
 func (r *Registry) Subscribe(buffer int) <-chan event.GenericEvent {

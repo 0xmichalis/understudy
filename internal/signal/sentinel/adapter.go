@@ -17,29 +17,82 @@ limitations under the License.
 package sentinel
 
 import (
-	"errors"
+	"context"
+	"strconv"
 	"time"
 
-	ctrl "sigs.k8s.io/controller-runtime"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/understudy-k8s/understudy/internal/signal"
+	"github.com/understudy-k8s/understudy/internal/signal/taint"
 )
 
-var ErrNotImplemented = errors.New("sentinel adapter is milestone 3; see docs/roadmap.md")
-
-type Notice struct {
-	Node     string
-	Deadline time.Time
-	Kind     string
-	Certain  bool
+type Runner struct {
+	Client   client.Client
+	Probe    Probe
+	NodeName string
+	Interval time.Duration
 }
 
-type Adapter struct{}
+func (r *Runner) Run(ctx context.Context) error {
+	log := logf.FromContext(ctx).WithValues("probe", r.Probe.Name(), "node", r.NodeName)
+	log.Info("sentinel started")
+	interval := r.Interval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	for {
+		notice, err := r.Probe.Poll(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return nil
+		case err != nil && err != ErrNoNotice:
+			log.V(1).Info("probe error", "error", err.Error())
+		case notice != nil:
+			if applyErr := r.applyTaint(ctx, notice); applyErr != nil {
+				log.Error(applyErr, "failed to taint node")
+			} else {
+				log.Info("termination notice observed",
+					"kind", string(notice.Kind), "deadline", notice.Deadline.UTC().Format(time.RFC3339))
+				if notice.Certain {
+					return nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(interval):
+		}
+	}
+}
 
-func New() *Adapter { return &Adapter{} }
+func (r *Runner) applyTaint(ctx context.Context, notice *Notice) error {
+	key := taint.DoomKey
+	effect := corev1.TaintEffectNoSchedule
+	value := strconv.FormatInt(notice.Deadline.Unix(), 10)
+	if notice.Kind == KindRebalance {
+		key = taint.RebalanceKey
+		effect = corev1.TaintEffectPreferNoSchedule
+	}
 
-func (a *Adapter) Name() string { return "sentinel" }
-
-func (a *Adapter) SetupWithManager(_ ctrl.Manager, _ *signal.Registry) error {
-	return ErrNotImplemented
+	var node corev1.Node
+	if err := r.Client.Get(ctx, client.ObjectKey{Name: r.NodeName}, &node); err != nil {
+		return err
+	}
+	for _, t := range node.Spec.Taints {
+		if t.Key == key && t.Value == value {
+			return nil
+		}
+	}
+	patched := node.DeepCopy()
+	filtered := patched.Spec.Taints[:0]
+	for _, t := range patched.Spec.Taints {
+		if t.Key != key {
+			filtered = append(filtered, t)
+		}
+	}
+	patched.Spec.Taints = append(filtered, corev1.Taint{Key: key, Value: value, Effect: effect})
+	return r.Client.Patch(ctx, patched, client.MergeFrom(&node))
 }

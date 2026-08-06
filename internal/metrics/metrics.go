@@ -35,6 +35,11 @@ var (
 		Help: "Hostage PDBs relaxed without a ready understudy, by reason.",
 	}, []string{"reason"})
 
+	EvictionAttemptsObserved = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "understudy_eviction_attempts_observed_total",
+		Help: "Eviction attempts seen by the observe-only webhook, by whether the pod is protected by an Understudy-owned PDB.",
+	}, []string{"protected"})
+
 	blockedMu    sync.Mutex
 	blockedSince = map[string]time.Time{}
 
@@ -68,5 +73,5 @@ func UntrackBlocked(key string) {
 }
 
 func init() {
-	ctrlmetrics.Registry.MustRegister(SurgesTotal, RelaxedTotal, OldestBlockedEvictionSeconds)
+	ctrlmetrics.Registry.MustRegister(SurgesTotal, RelaxedTotal, EvictionAttemptsObserved, OldestBlockedEvictionSeconds)
 }

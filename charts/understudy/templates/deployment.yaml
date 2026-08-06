@@ -37,6 +37,10 @@ spec:
             - --enable-cordon-adapter={{ .Values.signals.cordonAdapter }}
             - --enable-taint-adapter={{ .Values.signals.taintAdapter }}
             - --doom-taint-keys={{ join "," .Values.signals.doomTaintKeys }}
+            - --enable-eviction-webhook={{ .Values.signals.evictionWebhook }}
+            {{- if .Values.signals.evictionWebhook }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            {{- end }}
           env:
             - name: OPERATOR_NAMESPACE
               valueFrom:
@@ -47,6 +51,18 @@ spec:
           ports:
             - name: probes
               containerPort: 8081
+            - name: metrics
+              containerPort: {{ regexReplaceAll "^.*:" .Values.metrics.bindAddress "" }}
+            {{- if .Values.signals.evictionWebhook }}
+            - name: webhook
+              containerPort: 9443
+            {{- end }}
+          {{- if .Values.signals.evictionWebhook }}
+          volumeMounts:
+            - name: webhook-cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -63,6 +79,12 @@ spec:
               drop: ["ALL"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.signals.evictionWebhook }}
+      volumes:
+        - name: webhook-cert
+          secret:
+            secretName: {{ include "understudy.fullname" . }}-webhook-cert
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

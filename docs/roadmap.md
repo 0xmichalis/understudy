@@ -4,7 +4,7 @@ Milestone 1 (shipped in this repo) is the core surge state machine plus the
 two universal signal adapters. Everything below plugs into the same
 `signal.Adapter` / `signal.NodeDoom` contract - none of it touches core.
 
-## Milestone 2 - eviction webhook (`internal/signal/evictionwebhook`)
+## Milestone 2 - eviction webhook (shipped in v0.2.0)
 
 An observe-only ValidatingWebhook on `pods/eviction` CREATE: the universal
 fallback that sees every eviction attempt from every drainer past, present
@@ -22,7 +22,7 @@ eviction registry's PDB check). Design points:
 - Needs cert management (cert-manager or built-in rotation) - the reason
   it's not in the bootstrap milestone.
 
-## Milestone 3 - cloud sentinels (`internal/signal/sentinel`)
+## Milestone 3 - cloud sentinels (shipped in v0.2.0; AWS live-validated, GCP and Azure experimental)
 
 Per-node probes (DaemonSet) that watch each cloud's metadata channel and
 normalize to `NodeDoom{Involuntary, deadline}`. Deadlines are data measured
@@ -50,11 +50,13 @@ This is the only place cloud SDKs/endpoints will ever live.
   (already a default key), Karpenter `NodeClaim` disruption conditions, or a
   periodic "would this node consolidate if allowed?" probe that pre-surges
   and briefly relaxes.
-- **Doomed-node scheduling exclusion** for signals that carry no taint
-  (sentinel-only dooms, `PreferNoSchedule` soft taints): the surge pod can
-  land back on the dying node. Today core just refuses to count such a pod
-  as viable (so the surge retries/TTLs); a transient webhook-injected node
-  anti-affinity would prevent it outright.
+- **Azure event approval.** Azure Scheduled Events can be held and approved
+  early; the sentinel currently only reads them. Approving once the surge is
+  traffic-ready would make Azure the only cloud where an involuntary
+  disruption is fully mediated.
+- **GCP and Azure sentinels are untested against real infrastructure.** Both
+  are covered by fake-metadata-server unit tests only. They must be labelled
+  experimental until someone runs them on GKE and AKS.
 - **GitOps coexistence.** Argo CD / Flux will fight the replica bump.
   Mitigations to document/implement: `ignoreDifferences` recipes, or driving
   the surge through a separate standby Deployment instead of `spec.replicas`.

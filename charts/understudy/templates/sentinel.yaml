@@ -1,0 +1,88 @@
+{{- if .Values.sentinel.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "understudy.fullname" . }}-sentinel
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "understudy.fullname" . }}-sentinel
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "understudy.fullname" . }}-sentinel
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "understudy.fullname" . }}-sentinel
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "understudy.fullname" . }}-sentinel
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "understudy.fullname" . }}-sentinel
+  labels:
+    {{- include "understudy.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "understudy.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sentinel
+  template:
+    metadata:
+      labels:
+        {{- include "understudy.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sentinel
+    spec:
+      serviceAccountName: {{ include "understudy.fullname" . }}-sentinel
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      priorityClassName: {{ .Values.sentinel.priorityClassName }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sentinel
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/sentinel"]
+          args:
+            - --mode=sentinel
+            - --cloud={{ .Values.sentinel.cloud }}
+            - --surge-on-rebalance={{ .Values.sentinel.surgeOnRebalance }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.sentinel.resources | nindent 12 }}
+      {{- with .Values.sentinel.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      tolerations:
+        {{- toYaml .Values.sentinel.tolerations | nindent 8 }}
+{{- end }}

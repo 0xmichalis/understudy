@@ -21,6 +21,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/understudy-k8s/understudy/internal/controller"
 	"github.com/understudy-k8s/understudy/internal/signal"
 	"github.com/understudy-k8s/understudy/internal/signal/cordon"
+	"github.com/understudy-k8s/understudy/internal/signal/evictionwebhook"
 	"github.com/understudy-k8s/understudy/internal/signal/taint"
 	// +kubebuilder:scaffold:imports
 )
@@ -63,7 +65,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var enableCordonAdapter, enableTaintAdapter bool
+	var enableCordonAdapter, enableTaintAdapter, enableEvictionWebhook bool
 	var doomTaintKeys string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -89,6 +91,9 @@ func main() {
 	flag.BoolVar(&enableTaintAdapter, "enable-taint-adapter", true,
 		"Watch drainer-owned node taints as a doom signal (see --doom-taint-keys). Covers Karpenter "+
 			"and cluster-autoscaler dialects by default.")
+	flag.BoolVar(&enableEvictionWebhook, "enable-eviction-webhook", false,
+		"Serve an observe-only ValidatingWebhook on pods/eviction CREATE. It always admits and never denies; "+
+			"it exists to see eviction attempts from drainers that neither cordon nor taint.")
 	flag.StringVar(&doomTaintKeys, "doom-taint-keys", strings.Join(taint.DefaultKeys, ","),
 		"Comma-separated node taint KEYS treated as doom signals (matched by key only; values are "+
 			"ignored because drainers put timestamps there). A new drainer dialect is a new key here, "+
@@ -158,7 +163,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx := ctrl.SetupSignalHandler()
 	registry := signal.NewRegistry()
+	registry.StartJanitor(ctx, 10*time.Second)
 
 	adapters := []signal.Adapter{}
 	if enableCordonAdapter {
@@ -172,6 +179,9 @@ func main() {
 			}
 		}
 		adapters = append(adapters, taint.New(keys))
+	}
+	if enableEvictionWebhook {
+		adapters = append(adapters, evictionwebhook.New())
 	}
 	for _, a := range adapters {
 		if err := a.SetupWithManager(mgr, registry); err != nil {
@@ -204,7 +214,7 @@ func main() {
 	}
 
 	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}

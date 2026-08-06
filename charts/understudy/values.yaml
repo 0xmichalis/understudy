@@ -14,6 +14,35 @@ signals:
     - karpenter.sh/disrupted
     - ToBeDeletedByClusterAutoscaler
     - DeletionCandidateOfClusterAutoscaler
+  evictionWebhook: true
+  evictionWebhookTimeoutSeconds: 2
+  evictionWebhookNamespaceSelector: {}
+
+sentinel:
+  enabled: false
+  cloud: auto
+  surgeOnRebalance: false
+  priorityClassName: system-node-critical
+  nodeSelector: {}
+  tolerations:
+    - operator: Exists
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+failsafe:
+  enabled: true
+  schedule: "*/5 * * * *"
+  staleAfter: 15m
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
 
 leaderElection:
   enabled: true
@@ -39,3 +68,7 @@ rbac:
 metrics:
   bindAddress: ":8080"
   secure: false
+  service:
+    enabled: true
+    port: 8080
+    annotations: {}

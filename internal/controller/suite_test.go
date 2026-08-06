@@ -26,6 +26,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	admissionv1 "k8s.io/api/admissionregistration/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,10 +36,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	appsv1alpha1 "github.com/understudy-k8s/understudy/api/v1alpha1"
 	"github.com/understudy-k8s/understudy/internal/signal"
 	"github.com/understudy-k8s/understudy/internal/signal/cordon"
+	"github.com/understudy-k8s/understudy/internal/signal/evictionwebhook"
 	"github.com/understudy-k8s/understudy/internal/signal/taint"
 	// +kubebuilder:scaffold:imports
 )
@@ -77,6 +81,9 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
+		WebhookInstallOptions: envtest.WebhookInstallOptions{
+			ValidatingWebhooks: []*admissionv1.ValidatingWebhookConfiguration{evictionWebhookConfig()},
+		},
 	}
 
 	if getFirstFoundEnvTestBinaryDir() != "" {
@@ -92,15 +99,23 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient).NotTo(BeNil())
 
 	By("starting the manager with adapters and the reconciler")
+	whOpts := testEnv.WebhookInstallOptions
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:  scheme.Scheme,
 		Metrics: metricsserver.Options{BindAddress: "0"},
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Host:    whOpts.LocalServingHost,
+			Port:    whOpts.LocalServingPort,
+			CertDir: whOpts.LocalServingCertDir,
+		}),
 	})
 	Expect(err).NotTo(HaveOccurred())
 
 	registry = signal.NewRegistry()
+	registry.StartJanitor(ctx, time.Second)
 	Expect(cordon.New().SetupWithManager(mgr, registry)).To(Succeed())
 	Expect(taint.New(nil).SetupWithManager(mgr, registry)).To(Succeed())
+	Expect((&evictionwebhook.Adapter{DoomLifetime: 5 * time.Second}).SetupWithManager(mgr, registry)).To(Succeed())
 	Expect((&UnderstudyReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
@@ -128,6 +143,38 @@ var _ = AfterSuite(func() {
 		return testEnv.Stop()
 	}, time.Minute, time.Second).Should(Succeed())
 })
+
+func evictionWebhookConfig() *admissionv1.ValidatingWebhookConfiguration {
+	failurePolicy := admissionv1.Ignore
+	sideEffects := admissionv1.SideEffectClassNoneOnDryRun
+	scope := admissionv1.NamespacedScope
+	path := evictionwebhook.Path
+	return &admissionv1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "understudy-eviction-observer"},
+		Webhooks: []admissionv1.ValidatingWebhook{{
+			Name:                    "eviction-observer.understudy.dev",
+			FailurePolicy:           &failurePolicy,
+			SideEffects:             &sideEffects,
+			AdmissionReviewVersions: []string{"v1"},
+			ClientConfig: admissionv1.WebhookClientConfig{
+				Service: &admissionv1.ServiceReference{
+					Name:      "understudy-webhook",
+					Namespace: "default",
+					Path:      &path,
+				},
+			},
+			Rules: []admissionv1.RuleWithOperations{{
+				Operations: []admissionv1.OperationType{admissionv1.Create},
+				Rule: admissionv1.Rule{
+					APIGroups:   []string{""},
+					APIVersions: []string{"v1"},
+					Resources:   []string{"pods/eviction"},
+					Scope:       &scope,
+				},
+			}},
+		}},
+	}
+}
 
 func getFirstFoundEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")

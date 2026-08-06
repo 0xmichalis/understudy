@@ -46,6 +46,7 @@ import (
 const (
 	AnnotationBaseReplicas    = "understudy.dev/base-replicas"
 	AnnotationRelaxed         = "understudy.dev/relaxed"
+	AnnotationHeartbeat       = "understudy.dev/heartbeat"
 	LabelOwned                = "understudy.dev/owned"
 	PodDeletionCostAnnotation = "controller.kubernetes.io/pod-deletion-cost"
 	doomedPodDeletionCost     = "-1000"
@@ -54,7 +55,9 @@ const (
 	relaxReasonDeadline = "deadline"
 	relaxReasonMode     = "mode"
 
-	activeRequeue = 5 * time.Second
+	activeRequeue    = 5 * time.Second
+	heartbeatPeriod  = 60 * time.Second
+	protectedRequeue = 60 * time.Second
 )
 
 type UnderstudyReconciler struct {
@@ -150,7 +153,11 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		status.BlockedSince = nil
 		metrics.UntrackBlocked(req.String())
 		setCond(&status, &cr, appsv1alpha1.ConditionSurgeReady, boolToStatus(surgeReady), "Steady", "no disruption in sight")
-		return ctrl.Result{}, r.patchStatus(ctx, &cr, status)
+		result := ctrl.Result{}
+		if mode != appsv1alpha1.HostageOff {
+			result.RequeueAfter = protectedRequeue
+		}
+		return result, r.patchStatus(ctx, &cr, status)
 
 	case len(assessment.doomed) == 0 && surgeActive:
 		return r.reconcileScaleBack(ctx, &cr, &dep, status, assessment, base, req)
@@ -382,6 +389,9 @@ func (r *UnderstudyReconciler) ensurePDB(ctx context.Context, cr *appsv1alpha1.U
 					LabelOwned:                     "true",
 					"app.kubernetes.io/managed-by": "understudy",
 				},
+				Annotations: map[string]string{
+					AnnotationHeartbeat: strconv.FormatInt(time.Now().Unix(), 10),
+				},
 			},
 			Spec: policyv1.PodDisruptionBudgetSpec{
 				MinAvailable: &desiredMin,
@@ -389,7 +399,7 @@ func (r *UnderstudyReconciler) ensurePDB(ctx context.Context, cr *appsv1alpha1.U
 			},
 		}
 		if relaxed {
-			pdb.Annotations = map[string]string{AnnotationRelaxed: relaxReason}
+			pdb.Annotations[AnnotationRelaxed] = relaxReason
 		}
 		if err := ctrl.SetControllerReference(cr, &pdb, r.Scheme); err != nil {
 			return false, err
@@ -412,10 +422,15 @@ func (r *UnderstudyReconciler) ensurePDB(ctx context.Context, cr *appsv1alpha1.U
 	patched := pdb.DeepCopy()
 	patched.Spec.MinAvailable = &desiredMin
 	patched.Spec.Selector = dep.Spec.Selector
+	if patched.Annotations == nil {
+		patched.Annotations = map[string]string{}
+	}
+	now := time.Now()
+	if prev, err := strconv.ParseInt(patched.Annotations[AnnotationHeartbeat], 10, 64); err != nil ||
+		now.Sub(time.Unix(prev, 0)) >= heartbeatPeriod {
+		patched.Annotations[AnnotationHeartbeat] = strconv.FormatInt(now.Unix(), 10)
+	}
 	if relaxed {
-		if patched.Annotations == nil {
-			patched.Annotations = map[string]string{}
-		}
 		if _, ok := patched.Annotations[AnnotationRelaxed]; !ok {
 			patched.Annotations[AnnotationRelaxed] = relaxReason
 			metrics.RelaxedTotal.WithLabelValues(relaxReason).Inc()
@@ -630,7 +645,8 @@ func equalPDB(a, b *policyv1.PodDisruptionBudget) bool {
 	case *a.Spec.MinAvailable != *b.Spec.MinAvailable:
 		return false
 	}
-	return a.Annotations[AnnotationRelaxed] == b.Annotations[AnnotationRelaxed]
+	return a.Annotations[AnnotationRelaxed] == b.Annotations[AnnotationRelaxed] &&
+		a.Annotations[AnnotationHeartbeat] == b.Annotations[AnnotationHeartbeat]
 }
 
 func doomSource(d *signal.NodeDoom) string {

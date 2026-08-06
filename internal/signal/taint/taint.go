@@ -18,6 +18,8 @@ package taint
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +37,12 @@ var DefaultKeys = []string{
 	"DeletionCandidateOfClusterAutoscaler",
 }
 
-const SourcePrefix = "taint:"
+const (
+	SourcePrefix      = "taint:"
+	DoomKey           = "understudy.dev/doomed"
+	RebalanceKey      = "understudy.dev/rebalance"
+	rebalanceLifetime = 10 * time.Minute
+)
 
 type Adapter struct {
 	client   client.Client
@@ -54,6 +61,32 @@ func (a *Adapter) Name() string { return "taint" }
 
 func (a *Adapter) Keys() []string { return a.keys }
 
+func (a *Adapter) watchKeys() []string {
+	return append([]string{DoomKey, RebalanceKey}, a.keys...)
+}
+
+func (a *Adapter) doomFor(node *corev1.Node, key string) signal.NodeDoom {
+	d := signal.NodeDoom{
+		Node:   node.Name,
+		Class:  signal.VoluntaryUnbounded,
+		Source: SourcePrefix + key,
+	}
+	switch key {
+	case DoomKey:
+		d.Class = signal.Involuntary
+		if v := taintValue(node, key); v != "" {
+			if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+				t := time.Unix(secs, 0)
+				d.Deadline = &t
+			}
+		}
+	case RebalanceKey:
+		exp := time.Now().Add(rebalanceLifetime)
+		d.ExpiresAt = &exp
+	}
+	return d
+}
+
 func (a *Adapter) SetupWithManager(mgr ctrl.Manager, reg *signal.Registry) error {
 	a.client = mgr.GetClient()
 	a.registry = reg
@@ -69,8 +102,9 @@ func (a *Adapter) SetupWithManager(mgr ctrl.Manager, reg *signal.Registry) error
 				if !okOld || !okNew {
 					return true
 				}
-				for _, key := range a.keys {
-					if hasTaint(oldNode, key) != hasTaint(newNode, key) {
+				for _, key := range a.watchKeys() {
+					if taintValue(oldNode, key) != taintValue(newNode, key) ||
+						hasTaint(oldNode, key) != hasTaint(newNode, key) {
 						return true
 					}
 				}
@@ -85,7 +119,7 @@ func (a *Adapter) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result,
 	var node corev1.Node
 	if err := a.client.Get(ctx, req.NamespacedName, &node); err != nil {
 		if apierrors.IsNotFound(err) {
-			for _, key := range a.keys {
+			for _, key := range a.watchKeys() {
 				a.registry.Clear(req.Name, SourcePrefix+key)
 			}
 			return ctrl.Result{}, nil
@@ -93,14 +127,10 @@ func (a *Adapter) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result,
 		return ctrl.Result{}, err
 	}
 
-	for _, key := range a.keys {
+	for _, key := range a.watchKeys() {
 		source := SourcePrefix + key
 		if hasTaint(&node, key) {
-			a.registry.Set(signal.NodeDoom{
-				Node:   node.Name,
-				Class:  signal.VoluntaryUnbounded,
-				Source: source,
-			})
+			a.registry.Set(a.doomFor(&node, key))
 		} else {
 			a.registry.Clear(node.Name, source)
 		}
@@ -115,4 +145,13 @@ func hasTaint(node *corev1.Node, key string) bool {
 		}
 	}
 	return false
+}
+
+func taintValue(node *corev1.Node, key string) string {
+	for _, t := range node.Spec.Taints {
+		if t.Key == key {
+			return t.Value
+		}
+	}
+	return ""
 }
