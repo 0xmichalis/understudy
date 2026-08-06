@@ -41,7 +41,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - apps.understudy.dev
+  - apps.understudy.sh
   resources:
   - understudies
   verbs:
@@ -53,13 +53,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - apps.understudy.dev
+  - apps.understudy.sh
   resources:
   - understudies/finalizers
   verbs:
   - update
 - apiGroups:
-  - apps.understudy.dev
+  - apps.understudy.sh
   resources:
   - understudies/status
   verbs:

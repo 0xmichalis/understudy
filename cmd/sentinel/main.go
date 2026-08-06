@@ -124,14 +124,14 @@ func selectProbe(ctx context.Context, cloud string, surgeOnRebalance bool) senti
 func runJanitor(ctx context.Context, c client.Client, staleAfter time.Duration) error {
 	log := logf.FromContext(ctx)
 	var pdbs policyv1.PodDisruptionBudgetList
-	if err := c.List(ctx, &pdbs, client.MatchingLabels{"understudy.dev/owned": "true"}); err != nil {
+	if err := c.List(ctx, &pdbs, client.MatchingLabels{"understudy.sh/owned": "true"}); err != nil {
 		return err
 	}
 	now := time.Now()
 	deleted := 0
 	for i := range pdbs.Items {
 		pdb := &pdbs.Items[i]
-		raw := pdb.Annotations["understudy.dev/heartbeat"]
+		raw := pdb.Annotations["understudy.sh/heartbeat"]
 		secs, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			log.Info("owned PDB has no usable heartbeat; leaving it alone",

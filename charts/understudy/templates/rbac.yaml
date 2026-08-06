@@ -6,13 +6,13 @@ metadata:
   labels:
     {{- include "understudy.labels" . | nindent 4 }}
 rules:
-  - apiGroups: ["apps.understudy.dev"]
+  - apiGroups: ["apps.understudy.sh"]
     resources: ["understudies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["apps.understudy.dev"]
+  - apiGroups: ["apps.understudy.sh"]
     resources: ["understudies/status"]
     verbs: ["get", "update", "patch"]
-  - apiGroups: ["apps.understudy.dev"]
+  - apiGroups: ["apps.understudy.sh"]
     resources: ["understudies/finalizers"]
     verbs: ["update"]
   - apiGroups: ["apps"]

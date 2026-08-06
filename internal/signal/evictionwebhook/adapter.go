@@ -39,7 +39,7 @@ import (
 const (
 	Path         = "/observe-eviction"
 	SourcePrefix = "eviction:"
-	ownedLabel   = "understudy.dev/owned"
+	ownedLabel   = "understudy.sh/owned"
 	doomLifetime = 90 * time.Second
 )
 

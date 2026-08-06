@@ -156,7 +156,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "e9abbdca.understudy.dev",
+		LeaderElectionID:       "e9abbdca.understudy.sh",
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")

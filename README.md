@@ -11,7 +11,7 @@ serving traffic, and only then lets the original leave. The second pod exists
 for the couple of minutes a disruption is actually in flight.
 
 ```yaml
-apiVersion: apps.understudy.dev/v1alpha1
+apiVersion: apps.understudy.sh/v1alpha1
 kind: Understudy
 metadata:
   name: my-service
@@ -146,7 +146,7 @@ it left behind and the cluster returns to plain Kubernetes behaviour. There is
 a manual version of the same thing:
 
 ```sh
-kubectl delete pdb -A -l understudy.dev/owned=true
+kubectl delete pdb -A -l understudy.sh/owned=true
 ```
 
 The operator refuses to manage itself, skips targets it cannot help, and stands

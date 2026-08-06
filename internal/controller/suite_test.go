@@ -152,7 +152,7 @@ func evictionWebhookConfig() *admissionv1.ValidatingWebhookConfiguration {
 	return &admissionv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "understudy-eviction-observer"},
 		Webhooks: []admissionv1.ValidatingWebhook{{
-			Name:                    "eviction-observer.understudy.dev",
+			Name:                    "eviction-observer.understudy.sh",
 			FailurePolicy:           &failurePolicy,
 			SideEffects:             &sideEffects,
 			AdmissionReviewVersions: []string{"v1"},

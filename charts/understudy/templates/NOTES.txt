@@ -2,7 +2,7 @@ Understudy is installed.
 
 Give a Deployment an understudy:
 
-  apiVersion: apps.understudy.dev/v1alpha1
+  apiVersion: apps.understudy.sh/v1alpha1
   kind: Understudy
   metadata:
     name: my-service
@@ -20,4 +20,4 @@ drain must page a human, never wedge a node.
 ESCAPE HATCH - if the operator is ever gone while its PDBs still block
 drains, every PDB it owns is labeled for one-command removal:
 
-  kubectl delete pdb -A -l understudy.dev/owned=true
+  kubectl delete pdb -A -l understudy.sh/owned=true

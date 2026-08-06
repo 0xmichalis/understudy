@@ -44,10 +44,10 @@ import (
 )
 
 const (
-	AnnotationBaseReplicas    = "understudy.dev/base-replicas"
-	AnnotationRelaxed         = "understudy.dev/relaxed"
-	AnnotationHeartbeat       = "understudy.dev/heartbeat"
-	LabelOwned                = "understudy.dev/owned"
+	AnnotationBaseReplicas    = "understudy.sh/base-replicas"
+	AnnotationRelaxed         = "understudy.sh/relaxed"
+	AnnotationHeartbeat       = "understudy.sh/heartbeat"
+	LabelOwned                = "understudy.sh/owned"
 	PodDeletionCostAnnotation = "controller.kubernetes.io/pod-deletion-cost"
 	doomedPodDeletionCost     = "-1000"
 
@@ -77,9 +77,9 @@ type podAssessment struct {
 	all       []corev1.Pod
 }
 
-// +kubebuilder:rbac:groups=apps.understudy.dev,resources=understudies,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps.understudy.dev,resources=understudies/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=apps.understudy.dev,resources=understudies/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps.understudy.sh,resources=understudies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps.understudy.sh,resources=understudies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps.understudy.sh,resources=understudies/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch

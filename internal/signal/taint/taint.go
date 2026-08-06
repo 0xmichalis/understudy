@@ -39,8 +39,8 @@ var DefaultKeys = []string{
 
 const (
 	SourcePrefix      = "taint:"
-	DoomKey           = "understudy.dev/doomed"
-	RebalanceKey      = "understudy.dev/rebalance"
+	DoomKey           = "understudy.sh/doomed"
+	RebalanceKey      = "understudy.sh/rebalance"
 	rebalanceLifetime = 10 * time.Minute
 )
 

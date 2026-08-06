@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // +kubebuilder:object:generate=true
-// +groupName=apps.understudy.dev
+// +groupName=apps.understudy.sh
 package v1alpha1
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	SchemeGroupVersion = schema.GroupVersion{Group: "apps.understudy.dev", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: "apps.understudy.sh", Version: "v1alpha1"}
 
 	GroupVersion = SchemeGroupVersion
 

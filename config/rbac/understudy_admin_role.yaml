@@ -1,7 +1,7 @@
 # This rule is not used by the project understudy itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants full permissions ('*') over apps.understudy.dev.
+# Grants full permissions ('*') over apps.understudy.sh.
 # This role is intended for users authorized to modify roles and bindings within the cluster,
 # enabling them to delegate specific permissions to other users or groups as needed.
 
@@ -14,13 +14,13 @@ metadata:
   name: understudy-admin-role
 rules:
 - apiGroups:
-  - apps.understudy.dev
+  - apps.understudy.sh
   resources:
   - understudies
   verbs:
   - '*'
 - apiGroups:
-  - apps.understudy.dev
+  - apps.understudy.sh
   resources:
   - understudies/status
   verbs:

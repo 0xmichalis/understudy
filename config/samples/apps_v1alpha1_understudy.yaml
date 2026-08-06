@@ -1,4 +1,4 @@
-apiVersion: apps.understudy.dev/v1alpha1
+apiVersion: apps.understudy.sh/v1alpha1
 kind: Understudy
 metadata:
   labels:

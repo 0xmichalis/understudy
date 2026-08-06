@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: understudies.apps.understudy.dev
+  name: understudies.apps.understudy.sh
 spec:
-  group: apps.understudy.dev
+  group: apps.understudy.sh
   names:
     kind: Understudy
     listKind: UnderstudyList

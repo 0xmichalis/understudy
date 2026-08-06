@@ -38,7 +38,7 @@ metadata:
   labels:
     {{- include "understudy.labels" . | nindent 4 }}
 webhooks:
-  - name: eviction-observer.understudy.dev
+  - name: eviction-observer.understudy.sh
     admissionReviewVersions: ["v1"]
     sideEffects: NoneOnDryRun
     matchPolicy: Equivalent

@@ -80,7 +80,7 @@ func TestInvoluntaryWinsOverVoluntary(t *testing.T) {
 	r := NewRegistry()
 	deadline := time.Now().Add(2 * time.Minute)
 	r.Set(NodeDoom{Node: "n1", Class: VoluntaryUnbounded, Source: "cordon"})
-	r.Set(NodeDoom{Node: "n1", Class: Involuntary, Deadline: &deadline, Source: "taint:understudy.dev/doomed"})
+	r.Set(NodeDoom{Node: "n1", Class: Involuntary, Deadline: &deadline, Source: "taint:understudy.sh/doomed"})
 
 	got, ok := r.Lookup("n1")
 	if !ok || got.Class != Involuntary {

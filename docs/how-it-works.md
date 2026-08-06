@@ -206,7 +206,7 @@ disappearing, the cluster is back to plain Kubernetes behaviour. There is also
 a manual escape hatch, since every budget it creates is labelled:
 
 ```sh
-kubectl delete pdb -A -l understudy.dev/owned=true
+kubectl delete pdb -A -l understudy.sh/owned=true
 ```
 
 **The operator never manages itself.** It is stateless, so its own availability
