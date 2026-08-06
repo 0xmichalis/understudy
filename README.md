@@ -1,8 +1,12 @@
 # Understudy
 
-**High availability with one replica.** Run singleton workloads on spot nodes
-and survive what a cluster does to them, without paying for a second replica
-around the clock.
+**Best-effort high availability with one replica.** Understudy keeps
+single-replica workloads serving through node drains, upgrades, consolidation
+and spot reclaims, without paying for a second replica around the clock. Best
+effort, spelled out: no downtime from disruptions that announce themselves,
+bounded downtime when a hard deadline cannot be won, and no protection against
+unannounced hardware death. That last one is what a second replica is for, and
+nothing changes it.
 
 In theatre the understudy waits in the wings and steps in when the lead exits.
 This operator does the same for a single-replica Deployment: when a node is

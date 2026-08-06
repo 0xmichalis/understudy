@@ -1,10 +1,9 @@
 apiVersion: v2
 name: understudy
 description: >-
-  HA with 1 replica. Understudy spins up a temporary stand-in pod that gets
-  traffic-ready before the original is allowed to leave a doomed node -
-  surviving drains, upgrades, consolidation and spot reclaims without paying
-  for a second replica.
+  Best-effort high availability for single-replica Kubernetes workloads: no
+  downtime from announced node disruptions (drains, upgrades, consolidation,
+  spot reclaims) without a standing second replica.
 type: application
 version: 0.3.0
 appVersion: "0.3.0"
