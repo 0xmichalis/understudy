@@ -38,6 +38,7 @@ spec:
             - --enable-taint-adapter={{ .Values.signals.taintAdapter }}
             - --doom-taint-keys={{ join "," .Values.signals.doomTaintKeys }}
             - --enable-eviction-webhook={{ .Values.signals.evictionWebhook }}
+            - --enable-pin-detection={{ .Values.signals.pinDetection }}
             {{- if .Values.signals.evictionWebhook }}
             - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
             {{- end }}

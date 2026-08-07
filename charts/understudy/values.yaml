@@ -17,6 +17,7 @@ signals:
   evictionWebhook: true
   evictionWebhookTimeoutSeconds: 2
   evictionWebhookNamespaceSelector: {}
+  pinDetection: true
 
 sentinel:
   enabled: false

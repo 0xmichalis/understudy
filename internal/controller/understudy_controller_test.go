@@ -184,6 +184,22 @@ func taintNode(node *corev1.Node, key string) {
 	}).Should(Succeed())
 }
 
+func emitBlockedEvent(node, pdbRef string) {
+	ev := &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      node + ".consolidation-blocked",
+			Namespace: metav1.NamespaceDefault,
+		},
+		InvolvedObject: corev1.ObjectReference{Kind: "Node", Name: node},
+		Reason:         "DisruptionBlocked",
+		Type:           corev1.EventTypeNormal,
+		Message:        fmt.Sprintf("Cannot disrupt Node: pdb %q prevents pod evictions", pdbRef),
+		Source:         corev1.EventSource{Component: "karpenter"},
+		LastTimestamp:  metav1.Now(),
+	}
+	ExpectWithOffset(1, k8sClient.Create(ctx, ev)).To(Succeed())
+}
+
 func getDeployment(f *fixture) *appsv1.Deployment {
 	dep := &appsv1.Deployment{}
 	ExpectWithOffset(1, k8sClient.Get(ctx, client.ObjectKeyFromObject(f.dep), dep)).To(Succeed())
@@ -260,6 +276,39 @@ var _ = Describe("Understudy controller", func() {
 			expectSurged(f)
 		})
 	}
+
+	It("reports a pinned node without acting on it", func() {
+		f := newFixture(nil)
+		Eventually(func() error {
+			_, err := getPDB(f)
+			return err
+		}).Should(Succeed())
+
+		emitBlockedEvent(f.node.Name, f.ns+"/understudy-"+f.cr.Name)
+
+		By("raising the NodePinned condition")
+		Eventually(func() metav1.ConditionStatus {
+			if c := findCond(getCR(f), appsv1alpha1.ConditionNodePinned); c != nil {
+				return c.Status
+			}
+			return metav1.ConditionUnknown
+		}).Should(Equal(metav1.ConditionTrue))
+
+		By("touching nothing: no surge, no annotations, the budget keeps blocking")
+		Consistently(func() int32 { return *getDeployment(f).Spec.Replicas }).Should(Equal(int32(1)))
+		Expect(getDeployment(f).Annotations).NotTo(HaveKey(AnnotationBaseReplicas))
+		pdb, err := getPDB(f)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pdb.Spec.MinAvailable.IntValue()).To(Equal(1))
+
+		By("clearing the condition once the refusals go stale")
+		Eventually(func() metav1.ConditionStatus {
+			if c := findCond(getCR(f), appsv1alpha1.ConditionNodePinned); c != nil {
+				return c.Status
+			}
+			return metav1.ConditionUnknown
+		}, 30*time.Second).Should(Equal(metav1.ConditionFalse))
+	})
 
 	It("does not surge on unrelated taints or healthy nodes", func() {
 		f := newFixture(nil)

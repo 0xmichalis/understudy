@@ -45,6 +45,7 @@ const (
 	ConditionProtected            = "Protected"
 	ConditionSurgeReady           = "SurgeReady"
 	ConditionZeroDowntimeStrategy = "ZeroDowntimeUpdateStrategy"
+	ConditionNodePinned           = "NodePinned"
 )
 
 type TargetReference struct {

@@ -40,6 +40,11 @@ var (
 		Help: "Eviction attempts seen by the observe-only webhook, by whether the pod is protected by an Understudy-owned PDB.",
 	}, []string{"protected"})
 
+	NodePinnedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "understudy_node_pinned_total",
+		Help: "Times a protected workload was detected pinning its node: a disrupter wanted the node and the hostage budget blocked it. Understudy reports this and deliberately does not act; see The tradeoff in the README.",
+	})
+
 	blockedMu    sync.Mutex
 	blockedSince = map[string]time.Time{}
 
@@ -73,5 +78,5 @@ func UntrackBlocked(key string) {
 }
 
 func init() {
-	ctrlmetrics.Registry.MustRegister(SurgesTotal, RelaxedTotal, EvictionAttemptsObserved, OldestBlockedEvictionSeconds)
+	ctrlmetrics.Registry.MustRegister(SurgesTotal, RelaxedTotal, EvictionAttemptsObserved, NodePinnedTotal, OldestBlockedEvictionSeconds)
 }

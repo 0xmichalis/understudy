@@ -42,14 +42,16 @@ This is the only place cloud SDKs/endpoints will ever live.
 
 ## Post-M3 / open design items
 
-- **Disruption-candidate signals.** Karpenter dry-runs PDBs and refuses to
-  start consolidation while `disruptionsAllowed=0`; cluster-autoscaler
-  pre-checks similarly. The hostage PDB can therefore suppress the very
-  drain signal we wait for - nodes silently never consolidate. Candidate
-  ideas: watch CA's `DeletionCandidateOfClusterAutoscaler` soft taint
-  (already a default key), Karpenter `NodeClaim` disruption conditions, or a
-  periodic "would this node consolidate if allowed?" probe that pre-surges
-  and briefly relaxes.
+- **Budget-pinned nodes are reported, never resolved.** Karpenter dry-runs
+  PDBs and refuses to start consolidation, drift or expiry while
+  `disruptionsAllowed=0`; cluster-autoscaler pre-checks similarly. The
+  hostage PDB can therefore pin a node with no drain signal ever appearing.
+  Settled position: understudy detects the refusal and surfaces it (the
+  `NodePinned` condition, a Warning event, `understudy_node_pinned_total`)
+  and the README documents the mitigations, but the operator does not act.
+  Acting would mean initiating pod movement on another controller's
+  behalf, which is out of scope by design: understudy reacts to
+  disruptions, it never starts one.
 - **Azure event approval.** Azure Scheduled Events can be held and approved
   early; the sentinel currently only reads them. Approving once the surge is
   traffic-ready would make Azure the only cloud where an involuntary

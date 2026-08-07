@@ -184,6 +184,39 @@ kubectl delete pdb -A -l understudy.sh/owned=true
 The operator refuses to manage itself, skips targets it cannot help, and stands
 down while a rollout is in progress.
 
+## The tradeoff
+
+Understudy reacts to disruptions; it never starts one. That line is the
+design, and it has one deliberate consequence you should understand before
+protecting anything.
+
+Modern node orchestrators check budgets before they act. Karpenter dry-runs
+PodDisruptionBudgets for consolidation, drift and expiry alike, and simply
+never begins while the hostage budget allows no disruptions. No cordon, no
+taint, no eviction attempt: nothing ever happens, so there is nothing for
+any fail-safe to catch. A protected singleton can therefore pin its node.
+Bin-packing skips it, and on clusters where nothing forces the issue, node
+recycling skips it too.
+
+Understudy makes this visible instead of resolving it behind your back.
+When a blocker reports that an owned budget stopped it, the affected
+Understudy gets a `NodePinned` condition, a Warning event, and the
+`understudy_node_pinned_total` counter moves. What to do about it is your
+call, in rough order of preference:
+
+- Set `terminationGracePeriod` on your Karpenter NodePools. Blocked drift
+  and expiry then eventually become real drains, which is exactly the flow
+  Understudy handles with zero downtime.
+- Let deploys do it: every rollout reschedules the workload, and the pin
+  ends wherever the new pod lands.
+- `kubectl rollout restart` is the manual version of the same thing when a
+  `NodePinned` condition bothers you.
+- `hostageMode: voluntary-only` or `off` trades protection for mobility on
+  workloads where bin-packing matters more than the last second of uptime.
+
+What Understudy will not do is move a healthy pod on its own initiative. A
+tool that guards availability should never be the reason a pod died.
+
 ## Limits
 
 Understudy guarantees a ready replacement. It does not save requests already in
@@ -196,9 +229,9 @@ node has to be provisioned first. GCP and Azure give about thirty seconds,
 which cannot be won cold, so there the value is an orderly release and an early
 replacement rather than zero downtime.
 
-Karpenter checks disruption budgets before consolidating, so a protected
-workload can stop its node from being consolidated. You keep availability and
-lose some bin-packing.
+A protected workload can pin its node against graceful consolidation, drift
+and expiry. Understudy reports it (see The tradeoff above) and deliberately
+does not act on it.
 
 Workloads that cannot run two instances at once, including single-replica
 StatefulSets, are out of scope and always will be.

@@ -25,10 +25,14 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -40,6 +44,7 @@ import (
 	"github.com/kylan11/understudy/internal/signal"
 	"github.com/kylan11/understudy/internal/signal/cordon"
 	"github.com/kylan11/understudy/internal/signal/evictionwebhook"
+	"github.com/kylan11/understudy/internal/signal/pinned"
 	"github.com/kylan11/understudy/internal/signal/taint"
 	// +kubebuilder:scaffold:imports
 )
@@ -65,7 +70,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var enableCordonAdapter, enableTaintAdapter, enableEvictionWebhook bool
+	var enableCordonAdapter, enableTaintAdapter, enableEvictionWebhook, enablePinDetection bool
 	var doomTaintKeys string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -94,6 +99,10 @@ func main() {
 	flag.BoolVar(&enableEvictionWebhook, "enable-eviction-webhook", false,
 		"Serve an observe-only ValidatingWebhook on pods/eviction CREATE. It always admits and never denies; "+
 			"it exists to see eviction attempts from drainers that neither cordon nor taint.")
+	flag.BoolVar(&enablePinDetection, "enable-pin-detection", true,
+		"Watch DisruptionBlocked events that name an operator-owned PDB and surface a NodePinned "+
+			"condition, event and metric on the affected Understudy. Detection only: a pinned node is "+
+			"reported, never resolved. See The tradeoff in the README.")
 	flag.StringVar(&doomTaintKeys, "doom-taint-keys", strings.Join(taint.DefaultKeys, ","),
 		"Comma-separated node taint KEYS treated as doom signals (matched by key only; values are "+
 			"ignored because drainers put timestamps there). A new drainer dialect is a new key here, "+
@@ -157,6 +166,14 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "e9abbdca.understudy.sh",
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Event{}: {Field: fields.AndSelectors(
+					fields.OneTermEqualSelector("reason", pinned.BlockedReason),
+					fields.OneTermEqualSelector("involvedObject.kind", "Node"),
+				)},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -189,6 +206,14 @@ func main() {
 			os.Exit(1)
 		}
 		setupLog.Info("signal adapter enabled", "adapter", a.Name())
+	}
+	if enablePinDetection {
+		watcher := pinned.New()
+		if err := watcher.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to set up pin detection")
+			os.Exit(1)
+		}
+		setupLog.Info("pin detection enabled")
 	}
 
 	if err := (&controller.UnderstudyReconciler{
