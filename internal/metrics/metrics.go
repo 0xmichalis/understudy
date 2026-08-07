@@ -42,7 +42,7 @@ var (
 
 	NodePinnedTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "understudy_node_pinned_total",
-		Help: "Times a protected workload was detected pinning its node: a disrupter wanted the node and the hostage budget blocked it. Understudy reports this and deliberately does not act; see The tradeoff in the README.",
+		Help: "Times a protected workload was detected pinning its node: a disrupter wanted the node and the hostage budget blocked it. Understudy reports this and deliberately does not act; see Limits and the tradeoff in the README.",
 	})
 
 	blockedMu    sync.Mutex

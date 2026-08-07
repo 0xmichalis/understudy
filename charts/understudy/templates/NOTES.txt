@@ -5,11 +5,12 @@ Give a Deployment an understudy:
   apiVersion: apps.understudy.sh/v1alpha1
   kind: Understudy
   metadata:
-    name: my-service
+    name: tenant-worker
     namespace: my-namespace
   spec:
     targetRef:
-      name: my-service        # a Deployment in the same namespace
+      kind: Deployment
+      name: tenant-worker
     hostageMode: always       # always | voluntary-only | off
     minSurgeTimeSeconds: 60   # your realistic signal -> traffic-ready time
     readinessDeadlineSeconds: 600

@@ -25,10 +25,11 @@ for the couple of minutes a disruption is actually in flight.
 apiVersion: apps.understudy.sh/v1alpha1
 kind: Understudy
 metadata:
-  name: my-service
+  name: tenant-worker
 spec:
   targetRef:
-    name: my-service
+    kind: Deployment
+    name: tenant-worker
   hostageMode: always
   minSurgeTimeSeconds: 60
   readinessDeadlineSeconds: 600
@@ -184,21 +185,21 @@ kubectl delete pdb -A -l understudy.sh/owned=true
 The operator refuses to manage itself, skips targets it cannot help, and stands
 down while a rollout is in progress.
 
-## The tradeoff
+## Limits and the tradeoff
 
 Understudy reacts to disruptions; it never starts one. That line is the
-design, and it has one deliberate consequence you should understand before
-protecting anything.
+design, and most of what follows falls out of it.
 
-Modern node orchestrators check budgets before they act. Karpenter dry-runs
-PodDisruptionBudgets for consolidation, drift and expiry alike, and simply
-never begins while the hostage budget allows no disruptions. No cordon, no
-taint, no eviction attempt: nothing ever happens, so there is nothing for
-any fail-safe to catch. A protected singleton can therefore pin its node.
-Bin-packing skips it, and on clusters where nothing forces the issue, node
-recycling skips it too.
+**A protected workload can pin its node.** This is the one to understand
+before protecting anything. Modern node orchestrators check budgets before
+they act: Karpenter dry-runs PodDisruptionBudgets for consolidation, drift
+and expiry alike, and simply never begins while the hostage budget allows no
+disruptions. No cordon, no taint, no eviction attempt, so there is nothing
+for any fail-safe to catch and nothing for Understudy to react to.
+Bin-packing skips the node, and on clusters where nothing forces the issue,
+so does node recycling.
 
-Understudy makes this visible instead of resolving it behind your back.
+Understudy makes that visible rather than resolving it behind your back.
 When a blocker reports that an owned budget stopped it, the affected
 Understudy gets a `NodePinned` condition, a Warning event, and the
 `understudy_node_pinned_total` counter moves. What to do about it is your
@@ -227,24 +228,19 @@ a drain that has started. It does not start one.
 What Understudy will not do is move a healthy pod on its own initiative. A
 tool that guards availability should never be the reason a pod died.
 
-## Limits
+**In-flight requests are not saved.** Understudy guarantees a ready
+replacement, not the requests already travelling to the departing pod. Give
+the pod a `preStop` hook that outlasts your load balancer's deregistration
+delay; no surge mechanism can do it for you.
 
-Understudy guarantees a ready replacement. It does not save requests already in
-flight to the departing pod, which is a workload concern: give the pod a
-`preStop` hook that outlasts your load balancer's deregistration delay.
-
-On an involuntary deadline the handover is a race against the platform. AWS
-gives about two minutes, which a fast-booting workload can win even when a new
-node has to be provisioned first. GCP and Azure give about thirty seconds,
-which cannot be won cold, so there the value is an orderly release and an early
+**An involuntary deadline is a race against the platform.** AWS gives about
+two minutes, which a fast-booting workload can win even when a new node has
+to be provisioned first. GCP and Azure give about thirty seconds, which
+cannot be won cold, so there the value is an orderly release and an early
 replacement rather than zero downtime.
 
-A protected workload can pin its node against graceful consolidation, drift
-and expiry. Understudy reports it (see The tradeoff above) and deliberately
-does not act on it.
-
-Workloads that cannot run two instances at once, including single-replica
-StatefulSets, are out of scope and always will be.
+**Workloads that cannot run two instances at once are out of scope**,
+including single-replica StatefulSets, and always will be.
 
 ## Development
 

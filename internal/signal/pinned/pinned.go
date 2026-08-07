@@ -158,7 +158,7 @@ func (w *Watcher) setPinned(ctx context.Context, key types.NamespacedName, pinne
 		desired = metav1.ConditionTrue
 		reason = "BudgetBlocksDisruption"
 		message = fmt.Sprintf(
-			"a disrupter wants node %s but the hostage budget blocks it; graceful consolidation, drift and expiry cannot proceed (see The tradeoff in the README)",
+			"a disrupter wants node %s but the hostage budget blocks it; graceful consolidation, drift and expiry cannot proceed (see Limits and the tradeoff in the README)",
 			node)
 	}
 	current := meta.FindStatusCondition(cr.Status.Conditions, appsv1alpha1.ConditionNodePinned)
