@@ -18,11 +18,14 @@ package evictionwebhook
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
+	admissionv1 "k8s.io/api/admission/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,15 +35,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
 	"github.com/kylan11/understudy/internal/metrics"
 	"github.com/kylan11/understudy/internal/signal"
 )
 
 const (
-	Path         = "/observe-eviction"
-	SourcePrefix = "eviction:"
-	ownedLabel   = "understudy.sh/owned"
-	doomLifetime = 90 * time.Second
+	Path                   = "/observe-eviction"
+	SourcePrefix           = "eviction:"
+	baseReplicasAnnotation = "understudy.sh/base-replicas"
+	doomLifetime           = 90 * time.Second
 )
 
 type Adapter struct {
@@ -48,6 +52,11 @@ type Adapter struct {
 
 	reader   client.Reader
 	registry *signal.Registry
+}
+
+type protector struct {
+	cr  *appsv1alpha1.Understudy
+	dep *appsv1.Deployment
 }
 
 func New() *Adapter { return &Adapter{} }
@@ -84,10 +93,13 @@ func (a *Adapter) Handle(ctx context.Context, req admission.Request) admission.R
 	if pod.Spec.NodeName == "" {
 		return allowed
 	}
+	if pod.DeletionTimestamp != nil {
+		return allowed
+	}
 
-	protected := a.podProtected(ctx, &pod)
-	metrics.EvictionAttemptsObserved.WithLabelValues(strconv.FormatBool(protected)).Inc()
-	if !protected {
+	protectors := a.resolveProtectors(ctx, &pod)
+	metrics.EvictionAttemptsObserved.WithLabelValues(strconv.FormatBool(len(protectors) > 0)).Inc()
+	if len(protectors) == 0 {
 		return allowed
 	}
 
@@ -100,23 +112,95 @@ func (a *Adapter) Handle(ctx context.Context, req admission.Request) admission.R
 	})
 	logf.FromContext(ctx).V(1).Info("eviction attempt observed",
 		"pod", req.Namespace+"/"+req.Name, "node", pod.Spec.NodeName, "evictor", req.UserInfo.Username)
+
+	for _, p := range protectors {
+		if p.cr.HostageModeOrDefault() == appsv1alpha1.HostageOff ||
+			p.cr.Status.Phase == appsv1alpha1.PhaseRelaxed ||
+			a.standInReady(ctx, p.dep, pod.Spec.NodeName) {
+			continue
+		}
+		metrics.EvictionsHeld.Inc()
+		logf.FromContext(ctx).Info("Eviction held; stand-in not ready",
+			"pod", req.Namespace+"/"+req.Name, "evictor", req.UserInfo.Username)
+		return admission.Response{AdmissionResponse: admissionv1.AdmissionResponse{
+			Allowed: false,
+			Result: &metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    http.StatusTooManyRequests,
+				Reason:  metav1.StatusReasonTooManyRequests,
+				Message: fmt.Sprintf("understudy is preparing a stand-in for %s/%s; retry shortly", req.Namespace, req.Name),
+			},
+		}}
+	}
 	return allowed
 }
 
-func (a *Adapter) podProtected(ctx context.Context, pod *corev1.Pod) bool {
-	var pdbs policyv1.PodDisruptionBudgetList
-	if err := a.reader.List(ctx, &pdbs, client.InNamespace(pod.Namespace),
-		client.MatchingLabels{ownedLabel: "true"}); err != nil {
-		return false
+func (a *Adapter) resolveProtectors(ctx context.Context, pod *corev1.Pod) []protector {
+	var crs appsv1alpha1.UnderstudyList
+	if err := a.reader.List(ctx, &crs, client.InNamespace(pod.Namespace)); err != nil {
+		return nil
 	}
-	for i := range pdbs.Items {
-		selector, err := metav1.LabelSelectorAsSelector(pdbs.Items[i].Spec.Selector)
+	var protectors []protector
+	for i := range crs.Items {
+		cr := &crs.Items[i]
+		if cr.Status.Phase == appsv1alpha1.PhaseUnsupported {
+			continue
+		}
+		if kind := cr.Spec.TargetRef.Kind; kind != "" && kind != "Deployment" {
+			continue
+		}
+		var dep appsv1.Deployment
+		if err := a.reader.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: cr.Spec.TargetRef.Name}, &dep); err != nil {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
 		if err != nil {
 			continue
 		}
 		if selector.Matches(labels.Set(pod.Labels)) {
-			return true
+			protectors = append(protectors, protector{cr: cr, dep: &dep})
 		}
 	}
-	return false
+	return protectors
+}
+
+func (a *Adapter) standInReady(ctx context.Context, dep *appsv1.Deployment, victimNode string) bool {
+	base := int32(1)
+	if dep.Spec.Replicas != nil {
+		base = *dep.Spec.Replicas
+	}
+	if v, ok := dep.Annotations[baseReplicasAnnotation]; ok {
+		if parsed, err := strconv.ParseInt(v, 10, 32); err == nil {
+			base = int32(parsed)
+		}
+	}
+	selector, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
+	if err != nil {
+		return false
+	}
+	var pods corev1.PodList
+	if err := a.reader.List(ctx, &pods, client.InNamespace(dep.Namespace),
+		client.MatchingLabelsSelector{Selector: selector}); err != nil {
+		return false
+	}
+	healthy := 0
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		if p.DeletionTimestamp != nil {
+			continue
+		}
+		if p.Spec.NodeName == victimNode {
+			continue
+		}
+		if _, doomed := a.registry.Lookup(p.Spec.NodeName); doomed {
+			continue
+		}
+		for _, c := range p.Status.Conditions {
+			if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
+				healthy++
+				break
+			}
+		}
+	}
+	return healthy >= int(base)
 }
