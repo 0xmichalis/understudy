@@ -49,6 +49,11 @@ This is the only place cloud SDKs/endpoints will ever live.
   Settled position: understudy detects the refusal and surfaces it (the
   `NodePinned` condition, a Warning event, `understudy_node_pinned_total`)
   and the README documents the mitigations, but the operator does not act.
+  Measured on Karpenter 1.12, a NodePool `terminationGracePeriod` does NOT
+  lift the pin: a node claim carrying it is still refused with `Pdb
+  prevents pod evictions` during candidate selection. It bounds a drain
+  that has started, so it belongs with the node-claim-deletion path, not on
+  its own. What actually moves a pinned pod is rescheduling it.
   Acting would mean initiating pod movement on another controller's
   behalf, which is out of scope by design: understudy reacts to
   disruptions, it never starts one.

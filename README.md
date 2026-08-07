@@ -204,15 +204,25 @@ Understudy gets a `NodePinned` condition, a Warning event, and the
 `understudy_node_pinned_total` counter moves. What to do about it is your
 call, in rough order of preference:
 
-- Set `terminationGracePeriod` on your Karpenter NodePools. Blocked drift
-  and expiry then eventually become real drains, which is exactly the flow
-  Understudy handles with zero downtime.
 - Let deploys do it: every rollout reschedules the workload, and the pin
-  ends wherever the new pod lands.
+  ends wherever the new pod lands. On anything that ships regularly this is
+  the whole answer.
 - `kubectl rollout restart` is the manual version of the same thing when a
   `NodePinned` condition bothers you.
+- Delete the node claim itself. Deleting it starts a drain instead of
+  asking permission for one, so the taint appears, Understudy surges, and
+  the handover happens normally with no downtime. Pair it with a NodePool
+  `terminationGracePeriod` so that drain is bounded: budgets are still
+  honoured, but a replacement that never becomes ready cannot hold the node
+  open forever.
 - `hostageMode: voluntary-only` or `off` trades protection for mobility on
   workloads where bin-packing matters more than the last second of uptime.
+
+`terminationGracePeriod` on its own does not lift the pin, which is worth
+saying plainly because it reads like it should. Measured on Karpenter 1.12:
+a node whose claim carries the field is still refused with `Pdb prevents
+pod evictions` while it is merely a disruption candidate. The field bounds
+a drain that has started. It does not start one.
 
 What Understudy will not do is move a healthy pod on its own initiative. A
 tool that guards availability should never be the reason a pod died.
