@@ -410,13 +410,31 @@ var _ = Describe("Understudy controller", func() {
 		Consistently(func() appsv1alpha1.Phase { return getCR(f).Status.Phase }).Should(Equal(appsv1alpha1.PhaseUnsupported))
 	})
 
-	It("creates no PDB with hostageMode off but still surges on doom", func() {
+	It("honours the deprecated hostageMode and reports the effective mode", func() {
 		f := newFixture(func(cr *appsv1alpha1.Understudy) {
-			cr.Spec.HostageMode = appsv1alpha1.HostageOff
+			cr.Spec.HostageMode = appsv1alpha1.HoldVoluntaryOnly
+		})
+
+		Eventually(func() appsv1alpha1.HoldMode { return getCR(f).Status.Mode }).
+			Should(Equal(appsv1alpha1.HoldVoluntaryOnly))
+
+		By("preferring holdMode when both are set")
+		Eventually(func() error {
+			cr := getCR(f)
+			cr.Spec.HoldMode = appsv1alpha1.HoldOff
+			return k8sClient.Update(ctx, cr)
+		}).Should(Succeed())
+		Eventually(func() appsv1alpha1.HoldMode { return getCR(f).Status.Mode }).
+			Should(Equal(appsv1alpha1.HoldOff))
+	})
+
+	It("admits evictions immediately with holdMode off but still surges on doom", func() {
+		f := newFixture(func(cr *appsv1alpha1.Understudy) {
+			cr.Spec.HoldMode = appsv1alpha1.HoldOff
 		})
 		Consistently(func() bool {
 			return apierrors.IsNotFound(getPDB(f))
-		}).Should(BeTrue(), "no PDB may exist in hostageMode=off")
+		}).Should(BeTrue(), "no budget is ever created")
 
 		cordonNode(f.node)
 		expectSurged(f)

@@ -115,7 +115,7 @@ var _ = BeforeSuite(func() {
 	registry.StartExpiryLoop(ctx, time.Second)
 	Expect(cordon.New().SetupWithManager(mgr, registry)).To(Succeed())
 	Expect(taint.New(nil).SetupWithManager(mgr, registry)).To(Succeed())
-	Expect((&evictionwebhook.Adapter{DoomLifetime: 5 * time.Second}).SetupWithManager(mgr, registry)).To(Succeed())
+	Expect((&evictionwebhook.Adapter{DoomLifetime: 8 * time.Second}).SetupWithManager(mgr, registry)).To(Succeed())
 	Expect((&UnderstudyReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),

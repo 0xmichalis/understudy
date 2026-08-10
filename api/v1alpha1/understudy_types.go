@@ -22,12 +22,12 @@ import (
 )
 
 // +kubebuilder:validation:Enum=always;voluntary-only;off
-type HostageMode string
+type HoldMode string
 
 const (
-	HostageAlways        HostageMode = "always"
-	HostageVoluntaryOnly HostageMode = "voluntary-only"
-	HostageOff           HostageMode = "off"
+	HoldAlways        HoldMode = "always"
+	HoldVoluntaryOnly HoldMode = "voluntary-only"
+	HoldOff           HoldMode = "off"
 )
 
 type Phase string
@@ -71,9 +71,11 @@ type UnderstudySpec struct {
 	// +optional
 	ReadinessDeadlineSeconds *int32 `json:"readinessDeadlineSeconds,omitempty"`
 
-	// +kubebuilder:default=always
 	// +optional
-	HostageMode HostageMode `json:"hostageMode,omitempty"`
+	HoldMode HoldMode `json:"holdMode,omitempty"`
+
+	// +optional
+	HostageMode HoldMode `json:"hostageMode,omitempty"`
 
 	// +kubebuilder:default=60
 	// +kubebuilder:validation:Minimum=0
@@ -84,6 +86,9 @@ type UnderstudySpec struct {
 type UnderstudyStatus struct {
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
+
+	// +optional
+	Mode HoldMode `json:"mode,omitempty"`
 
 	// +optional
 	LastSurgeTime *metav1.Time `json:"lastSurgeTime,omitempty"`
@@ -103,7 +108,7 @@ type UnderstudyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.targetRef.name`
-// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.hostageMode`
+// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.status.mode`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Blocked-Since",type=date,JSONPath=`.status.blockedSince`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -150,11 +155,18 @@ func (u *Understudy) ReadinessDeadlineOrDefault() int32 {
 	return 600
 }
 
-func (u *Understudy) HostageModeOrDefault() HostageMode {
-	if u.Spec.HostageMode == "" {
-		return HostageAlways
+func (u *Understudy) HoldModeOrDefault() HoldMode {
+	if u.Spec.HoldMode != "" {
+		return u.Spec.HoldMode
 	}
-	return u.Spec.HostageMode
+	if u.Spec.HostageMode != "" {
+		return u.Spec.HostageMode
+	}
+	return HoldAlways
+}
+
+func (u *Understudy) UsesDeprecatedHoldMode() bool {
+	return u.Spec.HoldMode == "" && u.Spec.HostageMode != ""
 }
 
 func (u *Understudy) MinSurgeTimeOrDefault() int32 {

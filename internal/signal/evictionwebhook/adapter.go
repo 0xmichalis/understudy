@@ -114,7 +114,7 @@ func (a *Adapter) Handle(ctx context.Context, req admission.Request) admission.R
 		"pod", req.Namespace+"/"+req.Name, "node", pod.Spec.NodeName, "evictor", req.UserInfo.Username)
 
 	for _, p := range protectors {
-		if p.cr.HostageModeOrDefault() == appsv1alpha1.HostageOff ||
+		if p.cr.HoldModeOrDefault() == appsv1alpha1.HoldOff ||
 			p.cr.Status.Phase == appsv1alpha1.PhaseRelaxed ||
 			a.standInReady(ctx, p.dep, pod.Spec.NodeName) {
 			continue

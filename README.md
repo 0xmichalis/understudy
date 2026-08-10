@@ -38,7 +38,7 @@ spec:
   targetRef:
     kind: Deployment
     name: tenant-worker
-  hostageMode: always
+  holdMode: always
   minSurgeTimeSeconds: 60
   readinessDeadlineSeconds: 600
 ```
@@ -144,6 +144,8 @@ helm install understudy ./charts/understudy \
   --namespace understudy-system --create-namespace
 ```
 
+Upgrading from an earlier version? See [UPGRADING.md](UPGRADING.md).
+
 Then protect a workload by creating an `Understudy` next to it. `kubectl get
 understudies` shows the target, the mode, the phase, and how long anything has
 been blocked.
@@ -197,9 +199,9 @@ someone runs them on GKE and AKS.
 | `surgeReplicas` | 1 | How many stand-ins to add |
 | `minSurgeTimeSeconds` | 60 | How long this workload realistically takes to start serving. If a termination deadline is nearer than this, the eviction is released immediately instead of being held |
 | `readinessDeadlineSeconds` | 600 | How long to hold an eviction with no progress before giving up and letting it through |
-| `hostageMode` | `always` | Which disruptions are worth making wait. See below |
+| `holdMode` | `always` | Which disruptions are worth making wait. See below |
 
-`hostageMode` decides whether an eviction is held at all. The surge is not
+`holdMode` decides whether an eviction is held at all. The surge is not
 affected by it: a stand-in comes up on every doom signal in all three modes,
 because bringing one up early costs nothing and losing the race costs
 everything.
@@ -264,7 +266,7 @@ nodes. The webhook serves from every replica even though reconciliation is
 leader-gated. If the node hosting the only operator pod is drained, its own
 eviction is admitted and protection for pods later in that drain can disappear.
 
-## Limits and the tradeoff
+## Limits
 
 Understudy reacts to disruptions; it never starts one. Because there is no
 budget for a disrupter to pre-check, consolidation, drift and expiry can select

@@ -18,7 +18,7 @@ spec:
     - jsonPath: .spec.targetRef.name
       name: Target
       type: string
-    - jsonPath: .spec.hostageMode
+    - jsonPath: .status.mode
       name: Mode
       type: string
     - jsonPath: .status.phase
@@ -53,8 +53,13 @@ spec:
             type: object
           spec:
             properties:
+              holdMode:
+                enum:
+                - always
+                - voluntary-only
+                - "off"
+                type: string
               hostageMode:
-                default: always
                 enum:
                 - always
                 - voluntary-only
@@ -158,6 +163,12 @@ spec:
                 type: string
               lastSurgeTime:
                 format: date-time
+                type: string
+              mode:
+                enum:
+                - always
+                - voluntary-only
+                - "off"
                 type: string
               phase:
                 type: string

@@ -134,7 +134,12 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	surgeReady := assessment.viable >= int(base)
 
-	mode := cr.HostageModeOrDefault()
+	mode := cr.HoldModeOrDefault()
+	if status.Mode == "" && cr.UsesDeprecatedHoldMode() {
+		r.event(&cr, corev1.EventTypeWarning, "DeprecatedField", "Configure",
+			"spec.hostageMode is deprecated and will be removed; rename it to spec.holdMode")
+	}
+	status.Mode = mode
 	relaxReason, ttlExpired := r.relaxDecision(&cr, mode, assessment, surgeReady, status.BlockedSince)
 	setProtectedCondition(&status, &cr, mode, relaxReason)
 
@@ -185,11 +190,11 @@ func (r *UnderstudyReconciler) assessPods(ctx context.Context, cr *appsv1alpha1.
 	return a, nil
 }
 
-func (r *UnderstudyReconciler) relaxDecision(cr *appsv1alpha1.Understudy, mode appsv1alpha1.HostageMode,
+func (r *UnderstudyReconciler) relaxDecision(cr *appsv1alpha1.Understudy, mode appsv1alpha1.HoldMode,
 	a podAssessment, surgeReady bool, blockedSince *metav1.Time) (string, bool) {
 	relaxReason := ""
 	if a.worstDoom != nil && a.worstDoom.Class == signal.Involuntary {
-		if mode == appsv1alpha1.HostageVoluntaryOnly {
+		if mode == appsv1alpha1.HoldVoluntaryOnly {
 			relaxReason = relaxReasonMode
 		} else if a.worstDoom.Deadline != nil && !surgeReady &&
 			time.Until(*a.worstDoom.Deadline) < time.Duration(cr.MinSurgeTimeOrDefault())*time.Second {
@@ -386,15 +391,15 @@ func (r *UnderstudyReconciler) setStrategyCondition(status *appsv1alpha1.Underst
 }
 
 func setProtectedCondition(status *appsv1alpha1.UnderstudyStatus, cr *appsv1alpha1.Understudy,
-	mode appsv1alpha1.HostageMode, relaxReason string) {
-	reason, msg := "HostageOff", "hostageMode is off; evictions are not blocked"
-	if mode != appsv1alpha1.HostageOff {
+	mode appsv1alpha1.HoldMode, relaxReason string) {
+	reason, msg := "HoldOff", "holdMode is off; evictions are admitted immediately"
+	if mode != appsv1alpha1.HoldOff {
 		reason, msg = "EvictionHold", "evictions are held at admission while a stand-in is prepared"
 		if relaxReason != "" {
 			reason, msg = "Relaxed", "eviction hold relaxed ("+relaxReason+"); evictions may proceed"
 		}
 	}
-	setCond(status, cr, appsv1alpha1.ConditionProtected, boolToStatus(mode != appsv1alpha1.HostageOff && relaxReason == ""), reason, msg)
+	setCond(status, cr, appsv1alpha1.ConditionProtected, boolToStatus(mode != appsv1alpha1.HoldOff && relaxReason == ""), reason, msg)
 }
 
 func (r *UnderstudyReconciler) patchStatus(ctx context.Context, cr *appsv1alpha1.Understudy, status appsv1alpha1.UnderstudyStatus) error {
@@ -514,7 +519,7 @@ func boolToStatus(b bool) metav1.ConditionStatus {
 }
 
 func statusEqual(a, b *appsv1alpha1.UnderstudyStatus) bool {
-	if a.Phase != b.Phase || !timePtrEqual(a.LastSurgeTime, b.LastSurgeTime) ||
+	if a.Phase != b.Phase || a.Mode != b.Mode || !timePtrEqual(a.LastSurgeTime, b.LastSurgeTime) ||
 		!timePtrEqual(a.LastReleaseTime, b.LastReleaseTime) || !timePtrEqual(a.BlockedSince, b.BlockedSince) ||
 		len(a.Conditions) != len(b.Conditions) {
 		return false

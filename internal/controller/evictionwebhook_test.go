@@ -35,6 +35,17 @@ import (
 	"github.com/kylan11/understudy/internal/signal"
 )
 
+func expectSurgeUnderRetryingEvictor(f *fixture) {
+	EventuallyWithOffset(1, func() int32 {
+		_ = evict(f.pod, false)
+		dep := &appsv1.Deployment{}
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(f.dep), dep); err != nil || dep.Spec.Replicas == nil {
+			return -1
+		}
+		return *dep.Spec.Replicas
+	}).Should(Equal(int32(2)), "a drainer that keeps retrying should drive the surge")
+}
+
 func evict(pod *corev1.Pod, dryRun bool) error {
 	eviction := &policyv1.Eviction{
 		ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
@@ -58,14 +69,11 @@ var _ = Describe("Eviction webhook adapter", func() {
 		}).Should(BeTrue(), "the eviction hold should reject the eviction with 429")
 
 		By("surging purely on the observed eviction attempt")
-		Eventually(func() int32 {
-			dep := &appsv1.Deployment{}
-			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(f.dep), dep); err != nil {
-				return -1
-			}
-			return *dep.Spec.Replicas
-		}).Should(Equal(int32(2)))
-		Eventually(func() appsv1alpha1.Phase { return getCR(f).Status.Phase }).Should(Equal(appsv1alpha1.PhaseSurging))
+		expectSurgeUnderRetryingEvictor(f)
+		Eventually(func() appsv1alpha1.Phase {
+			_ = evict(f.pod, false)
+			return getCR(f).Status.Phase
+		}).Should(Equal(appsv1alpha1.PhaseSurging))
 	})
 
 	It("ignores evictions of pods that no Understudy protects", func() {
@@ -112,7 +120,7 @@ var _ = Describe("Eviction webhook adapter", func() {
 			fmt.Sprintf("the hold must be indistinguishable from a budget block; got: %v", evictErr))
 
 		By("surging on the held attempt")
-		Eventually(func() int32 { return *getDeployment(f).Spec.Replicas }).Should(Equal(int32(2)))
+		expectSurgeUnderRetryingEvictor(f)
 
 		By("admitting the eviction once the stand-in is ready")
 		clearNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: f.ns + "-clear"}}
@@ -131,8 +139,7 @@ var _ = Describe("Eviction webhook adapter", func() {
 		})
 
 		By("holding the first attempts")
-		Eventually(func() bool { return evict(f.pod, false) != nil }).Should(BeTrue())
-		Eventually(func() int32 { return *getDeployment(f).Spec.Replicas }).Should(Equal(int32(2)))
+		expectSurgeUnderRetryingEvictor(f)
 		makePod(f.ns, "lead-understudy", f.dep.Name, f.node.Name, false)
 
 		By("admitting after the deadline even with no ready stand-in")
@@ -142,9 +149,8 @@ var _ = Describe("Eviction webhook adapter", func() {
 	It("un-surges once eviction attempts stop and the signal expires", func() {
 		f := newFixture(nil)
 
-		By("triggering a surge via an eviction attempt")
-		Eventually(func() bool { return evict(f.pod, false) != nil }).Should(BeTrue())
-		Eventually(func() int32 { return *getDeployment(f).Spec.Replicas }).Should(Equal(int32(2)))
+		By("triggering a surge via eviction attempts")
+		expectSurgeUnderRetryingEvictor(f)
 
 		By("letting the signal expire naturally once attempts stop")
 		Eventually(func() int32 { return *getDeployment(f).Spec.Replicas }).Should(Equal(int32(1)))

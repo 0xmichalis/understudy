@@ -83,15 +83,17 @@ the hold is relaxed immediately while the surge continues. A hold is also
 relaxed after `readinessDeadlineSeconds`, ensuring an unschedulable stand-in
 cannot wedge a drain forever.
 
-`hostageMode` chooses which of those disruptions are held in the first
+`holdMode` chooses which of those disruptions are held in the first
 place. `always` holds both classes, `voluntary-only` holds the unbounded
 ones and admits anything carrying a deadline the moment it is seen, and
 `off` admits everything. The mode gates the hold alone: the surge runs in
 every mode, since a stand-in started early costs a pod for a few minutes
-and a stand-in started late costs the outage it was meant to prevent. The
-field is named for the budget that used to take the eviction hostage; the
-enforcement moved to admission in v0.4.0 and the name stayed put so that
-existing resources keep working.
+and a stand-in started late costs the outage it was meant to prevent.
+
+The field was called `hostageMode` when a budget took the eviction
+hostage. That spelling is deprecated and still honoured: a resource
+setting only the old field keeps working, and the operator raises one
+warning event, until the field is removed in a later release.
 
 ```mermaid
 flowchart TD

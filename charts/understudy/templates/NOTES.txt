@@ -11,7 +11,7 @@ Give a Deployment an understudy:
     targetRef:
       kind: Deployment
       name: tenant-worker
-    hostageMode: always       # always | voluntary-only | off
+    holdMode: always          # always | voluntary-only | off
     minSurgeTimeSeconds: 60   # your realistic signal -> traffic-ready time
     readinessDeadlineSeconds: 600
 

@@ -1,5 +1,12 @@
 # Roadmap
 
+## v0.4.1 - holdMode
+
+`hostageMode` is renamed to `holdMode`, the old field still accepted and
+reported once as deprecated. `status.mode` carries the resolved value and
+feeds the `MODE` print column. Upgrade notes moved out of the readme into
+UPGRADING.md.
+
 ## v0.4.0 - admission-time eviction hold
 
 The validating webhook is now the enforcement point. It returns the same HTTP
