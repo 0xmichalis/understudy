@@ -19,3 +19,52 @@ keywords:
 home: https://github.com/kylan11/understudy
 sources:
   - https://github.com/kylan11/understudy
+icon: https://raw.githubusercontent.com/kylan11/understudy/main/docs/assets/understudy-badge.png
+maintainers:
+  - name: kylan11
+    url: https://github.com/kylan11
+annotations:
+  artifacthub.io/category: skip-prediction
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Seamless Upgrades
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/kylan11/understudy
+    - name: How it works
+      url: https://github.com/kylan11/understudy/blob/main/docs/how-it-works.md
+    - name: Upgrade notes
+      url: https://github.com/kylan11/understudy/blob/main/UPGRADING.md
+    - name: Issues
+      url: https://github.com/kylan11/understudy/issues
+  artifacthub.io/images: |
+    - name: understudy
+      image: ghcr.io/kylan11/understudy:0.4.1
+  artifacthub.io/crds: |
+    - kind: Understudy
+      version: v1alpha1
+      name: understudies.apps.understudy.sh
+      displayName: Understudy
+      description: >-
+        Protects a single-replica Deployment by bringing up a stand-in pod when
+        its node is doomed and holding the eviction until the stand-in serves
+        traffic.
+  artifacthub.io/crdsExamples: |
+    - apiVersion: apps.understudy.sh/v1alpha1
+      kind: Understudy
+      metadata:
+        name: tenant-worker
+      spec:
+        targetRef:
+          kind: Deployment
+          name: tenant-worker
+        holdMode: always
+        minSurgeTimeSeconds: 60
+        readinessDeadlineSeconds: 600
+  artifacthub.io/changes: |
+    - kind: changed
+      description: hostageMode is now holdMode, and the old field is still accepted
+      links:
+        - name: Upgrade notes
+          url: https://github.com/kylan11/understudy/blob/main/UPGRADING.md

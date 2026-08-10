@@ -106,6 +106,10 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+.PHONY: chart-check
+chart-check: ## Verify the chart's Artifact Hub metadata tracks appVersion
+	./hack/check-chart-metadata.sh
+
 ##@ Build
 
 .PHONY: build

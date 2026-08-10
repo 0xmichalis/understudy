@@ -52,3 +52,5 @@ jobs:
         run: |
           helm lint charts/understudy
           helm template smoke charts/understudy > /dev/null
+      - name: Chart metadata tracks appVersion
+        run: make chart-check

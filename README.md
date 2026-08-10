@@ -10,6 +10,7 @@
   reclaims, without paying for a second replica around the clock.</p>
   <p>
     <a href="https://github.com/kylan11/understudy/releases"><img alt="Release" src="https://img.shields.io/github/v/release/kylan11/understudy?style=for-the-badge&label=release&color=1f6feb"></a>
+    <a href="https://artifacthub.io/packages/search?repo=understudy"><img alt="Artifact Hub" src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/understudy&style=for-the-badge"></a>
     <a href="https://github.com/kylan11/understudy/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/kylan11/understudy?style=for-the-badge&color=2ea043"></a>
     <a href="https://github.com/kylan11/understudy/actions/workflows/ci.yaml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/kylan11/understudy/ci.yaml?branch=main&style=for-the-badge&label=build"></a>
     <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/kylan11/understudy?style=for-the-badge"></a>
