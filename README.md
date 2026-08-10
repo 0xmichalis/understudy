@@ -1,19 +1,27 @@
-# Understudy
+<div align="center">
+  <img src="docs/assets/understudy-badge.png" alt="" width="190">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.png">
+    <img src="docs/assets/wordmark-light.png" alt="Understudy" width="330">
+  </picture>
+  <p><b>Best-effort high availability with one replica.</b><br>
+  Run singleton workloads through node drains, upgrades, consolidation and spot<br>
+  reclaims, without paying for a second replica around the clock.</p>
+  <p>
+    <a href="https://github.com/kylan11/understudy/releases"><img alt="Release" src="https://img.shields.io/github/v/release/kylan11/understudy?style=for-the-badge&label=release&color=1f6feb"></a>
+    <a href="https://github.com/kylan11/understudy/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/kylan11/understudy?style=for-the-badge&color=2ea043"></a>
+    <a href="https://github.com/kylan11/understudy/actions/workflows/ci.yaml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/kylan11/understudy/ci.yaml?branch=main&style=for-the-badge&label=build"></a>
+    <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/kylan11/understudy?style=for-the-badge"></a>
+    <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kylan11/understudy?style=for-the-badge"></a>
+    <a href="https://github.com/kylan11/understudy/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kylan11/understudy?style=for-the-badge&color=e3b341"></a>
+  </p>
+</div>
 
-[![Release](https://img.shields.io/github/v/release/kylan11/understudy?style=for-the-badge&label=release&color=1f6feb)](https://github.com/kylan11/understudy/releases)
-[![Last commit](https://img.shields.io/github/last-commit/kylan11/understudy?style=for-the-badge&color=2ea043)](https://github.com/kylan11/understudy/commits/main)
-[![Build](https://img.shields.io/github/actions/workflow/status/kylan11/understudy/ci.yaml?branch=main&style=for-the-badge&label=build)](https://github.com/kylan11/understudy/actions/workflows/ci.yaml)
-[![Go version](https://img.shields.io/github/go-mod/go-version/kylan11/understudy?style=for-the-badge)](go.mod)
-[![License](https://img.shields.io/github/license/kylan11/understudy?style=for-the-badge)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/kylan11/understudy?style=for-the-badge&color=e3b341)](https://github.com/kylan11/understudy/stargazers)
-
-**Best-effort high availability with one replica.** Understudy keeps
-single-replica workloads serving through node drains, upgrades, consolidation
-and spot reclaims, without paying for a second replica around the clock. Best
-effort, spelled out: no downtime from disruptions that announce themselves,
-bounded downtime when a hard deadline cannot be won, and no protection against
-unannounced hardware death. That last one is what a second replica is for, and
-nothing changes it.
+Best effort, spelled out: no downtime from disruptions that announce
+themselves, bounded downtime when a hard deadline cannot be won, and no
+protection against unannounced hardware death. That last one is what a second
+replica is for, and nothing changes it.
 
 In theatre the understudy waits in the wings and steps in when the lead exits.
 This operator does the same for a single-replica Deployment: when a node is
