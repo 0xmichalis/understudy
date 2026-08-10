@@ -69,11 +69,7 @@ then exists only while a disruption is happening.
 Measured on EKS with Karpenter on arm64 spot nodes, one replica behind an
 application load balancer, with no spare capacity so every replacement waited
 for a new EC2 instance. The availability probe ran at roughly three requests
-per second. The disruption results below are from the v0.3.x PDB mechanism;
-v0.4.0 separately validated the admission path on the same staging cluster:
-same-node stand-ins remained held, a clear-node stand-in released immediately,
-the 10-second TTL released in 12 seconds, and operator-down fail-open admitted
-in 423 ms.
+per second.
 
 | Event | Failed requests |
 |---|---|
@@ -87,6 +83,52 @@ The last row is the important one. The handful of requests lost during a
 disruption are lost as the old pod exits, and an ordinary deploy of the same
 workload loses more. Understudy makes a node disruption cost about what a
 routine deploy costs.
+
+Those requests were counted under the budget mechanism of v0.3.x. The surge,
+the readiness gate and the release are the same code today; only the thing
+that answers the eviction changed. So the evidence for the part that did
+change comes from a fleet already running it, 68 protected workloads on a
+29-node cluster, over a window in which Karpenter consolidated 34 times.
+
+| | |
+|---|---|
+| Eviction attempts on protected pods | 92 |
+| Held with 429 until a stand-in served | 83 |
+| Admitted | 9 |
+| Complete handovers: surge, ready, scale back | 9 |
+| Holds released without a ready stand-in | 0 |
+| Workloads that dropped below one available replica | 0 |
+
+The nine admissions are the nine handovers. Every protected pod was refused
+until its stand-in was serving and then admitted once, and the slowest of
+them, which had to wait for a new node, took 57 seconds. None of those 34
+consolidations could have started under a blocking budget: the budget is
+visible before a disrupter acts, and a hold is not.
+
+## Requirements
+
+Understudy enforces at admission, so the API server has to be able to reach
+the webhook service on port 443. That is the default nearly everywhere and
+the admission API it uses has been stable since Kubernetes 1.16, but it is
+not universal: a private control plane with tightly scoped security groups,
+or a network policy that does not admit control-plane traffic, will block
+the path. The chart declares Kubernetes 1.34 or newer.
+
+The webhook is registered `failurePolicy: Ignore` deliberately, because a
+webhook that cannot be reached must never wedge every eviction in the
+cluster. The consequence is worth stating plainly: an unreachable webhook
+degrades to no protection rather than to an error, quietly. Check it once
+after installing, by evicting a protected pod and expecting a refusal:
+
+```sh
+kubectl create --raw "/api/v1/namespaces/NS/pods/POD/eviction" -f - <<'EOF'
+{"apiVersion": "policy/v1", "kind": "Eviction",
+ "metadata": {"name": "POD", "namespace": "NS"}}
+EOF
+```
+
+A working install answers `TooManyRequests` and starts a surge. Silence
+means the API server never reached the webhook.
 
 ## Install
 
