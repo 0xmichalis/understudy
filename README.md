@@ -84,27 +84,6 @@ disruption are lost as the old pod exits, and an ordinary deploy of the same
 workload loses more. Understudy makes a node disruption cost about what a
 routine deploy costs.
 
-Those requests were counted under the budget mechanism of v0.3.x. The surge,
-the readiness gate and the release are the same code today; only the thing
-that answers the eviction changed. So the evidence for the part that did
-change comes from a fleet already running it, 68 protected workloads on a
-29-node cluster, over a window in which Karpenter consolidated 34 times.
-
-| | |
-|---|---|
-| Eviction attempts on protected pods | 92 |
-| Held with 429 until a stand-in served | 83 |
-| Admitted | 9 |
-| Complete handovers: surge, ready, scale back | 9 |
-| Holds released without a ready stand-in | 0 |
-| Workloads that dropped below one available replica | 0 |
-
-The nine admissions are the nine handovers. Every protected pod was refused
-until its stand-in was serving and then admitted once, and the slowest of
-them, which had to wait for a new node, took 57 seconds. None of those 34
-consolidations could have started under a blocking budget: the budget is
-visible before a disrupter acts, and a hold is not.
-
 ## Requirements
 
 Understudy enforces at admission, so the API server has to be able to reach
