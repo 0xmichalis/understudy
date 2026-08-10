@@ -197,7 +197,27 @@ someone runs them on GKE and AKS.
 | `surgeReplicas` | 1 | How many stand-ins to add |
 | `minSurgeTimeSeconds` | 60 | How long this workload realistically takes to start serving. If a termination deadline is nearer than this, the eviction is released immediately instead of being held |
 | `readinessDeadlineSeconds` | 600 | How long to hold an eviction with no progress before giving up and letting it through |
-| `hostageMode` | `always` | `always`, `voluntary-only`, or `off` |
+| `hostageMode` | `always` | Which disruptions are worth making wait. See below |
+
+`hostageMode` decides whether an eviction is held at all. The surge is not
+affected by it: a stand-in comes up on every doom signal in all three modes,
+because bringing one up early costs nothing and losing the race costs
+everything.
+
+- `always` holds both kinds. A drain, a consolidation or an upgrade waits
+  as long as it takes, and a spot reclaim waits too, until the deadline
+  gets close enough that `minSurgeTimeSeconds` says the race is lost.
+- `voluntary-only` holds a disruption that can wait and never one that
+  cannot. The node in a spot reclaim is going away at a fixed moment
+  whatever any budget or webhook says, so the eviction is admitted at once
+  and the pod spends its last seconds shutting down cleanly instead of
+  being refused and then killed. Use it when your workload drains
+  connections on `SIGTERM` and you would rather it start immediately.
+- `off` never holds. The stand-in is still brought up in parallel, so the
+  workload is down only for as long as the replacement takes rather than
+  for as long as a reschedule takes. Use it where bin-packing matters more
+  than the last second of uptime, or to disable the hold for one workload
+  without touching the rest of the cluster.
 
 If you run on spot without the sentinel, set `readinessDeadlineSeconds` below
 the platform's notice window, otherwise the operator can hold an eviction
