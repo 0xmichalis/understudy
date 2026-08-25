@@ -8,6 +8,7 @@
   <p><b>Best-effort high availability with one replica.</b><br>
   Run singleton workloads through node drains, upgrades, consolidation and spot<br>
   reclaims, without paying for a second replica around the clock.</p>
+  <p><sub>Maintained by <a href="https://mitis.dev">mitis</a> - Kubernetes &amp; FinOps</sub></p>
   <p>
     <a href="https://github.com/kylan11/understudy/releases"><img alt="Release" src="https://img.shields.io/github/v/release/kylan11/understudy?style=for-the-badge&label=release&color=1f6feb"></a>
     <a href="https://artifacthub.io/packages/search?repo=understudy"><img alt="Artifact Hub" src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/understudy&style=for-the-badge"></a>
