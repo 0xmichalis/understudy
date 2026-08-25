@@ -17,6 +17,7 @@
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kylan11/understudy?style=for-the-badge"></a>
     <a href="https://github.com/kylan11/understudy/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kylan11/understudy?style=for-the-badge&color=e3b341"></a>
   </p>
+  <img src="docs/assets/terminal-demo.svg" width="720" alt="Terminal simulation: the pod in production receives a spot interruption notice, Understudy holds the eviction and starts a stand-in pod that goes from Pending to Running; only then does the original terminate. The probe records 764 requests, 1 failed.">
 </div>
 
 Best effort, spelled out: no downtime from disruptions that announce
