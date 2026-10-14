@@ -5,8 +5,8 @@ description: >-
   downtime from announced node disruptions (drains, upgrades, consolidation,
   spot reclaims) without a standing second replica.
 type: application
-version: 0.4.2
-appVersion: "0.4.2"
+version: 0.4.3
+appVersion: "0.4.3"
 kubeVersion: ">=1.34.0-0"
 keywords:
   - availability
@@ -16,6 +16,7 @@ keywords:
   - node-drain
   - karpenter
   - cluster-autoscaler
+  - argo-rollouts
 home: https://github.com/kylan11/understudy
 sources:
   - https://github.com/kylan11/understudy
@@ -40,16 +41,16 @@ annotations:
       url: https://github.com/kylan11/understudy/issues
   artifacthub.io/images: |
     - name: understudy
-      image: ghcr.io/kylan11/understudy:0.4.2
+      image: ghcr.io/kylan11/understudy:0.4.3
   artifacthub.io/crds: |
     - kind: Understudy
       version: v1alpha1
       name: understudies.apps.understudy.sh
       displayName: Understudy
       description: >-
-        Protects a single-replica Deployment by bringing up a stand-in pod when
-        its node is doomed and holding the eviction until the stand-in serves
-        traffic.
+        Protects a single-replica Deployment or Argo Rollout by bringing up a
+        stand-in pod when its node is doomed and holding the eviction until
+        the stand-in serves traffic.
   artifacthub.io/crdsExamples: |
     - apiVersion: apps.understudy.sh/v1alpha1
       kind: Understudy
@@ -63,8 +64,7 @@ annotations:
         minSurgeTimeSeconds: 60
         readinessDeadlineSeconds: 600
   artifacthub.io/changes: |
-    - kind: security
-      description: golang.org/x/net, golang.org/x/text and google.golang.org/grpc updated past CVEs reachable from the probe client and the webhook server
-      links:
-        - name: Report
-          url: https://github.com/kylan11/understudy/issues/3
+    - kind: added
+      description: Protect fully promoted Argo Rollouts with canary and blue/green strategies using targetRef.kind Rollout
+    - kind: fixed
+      description: Admit evictions while standing down for progressive delivery and exclude preview revisions from Rollout replacement readiness

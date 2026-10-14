@@ -1,5 +1,16 @@
 # Roadmap
 
+## v0.4.3 - Argo Rollouts
+
+Fully promoted canary and blue/green Rollouts can now be protected using
+`targetRef.kind: Rollout`. Replica scaling uses Argo's native controller, and
+only the serving revision counts toward replacement readiness. Progressive
+delivery, pauses, and aborts cause the controller and webhook to stand down.
+Argo Rollouts remains optional and is detected at operator startup.
+
+Validated with Argo Rollouts v1.10.1 on an isolated Kubernetes 1.36.4 Kind
+cluster, including eviction holds, scale-back, HTTP serving, and paused releases.
+
 ## v0.4.1 - holdMode
 
 `hostageMode` is renamed to `holdMode`, the old field still accepted and
