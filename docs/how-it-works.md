@@ -25,7 +25,8 @@ Readiness gates therefore include load balancer registration. Once enough
 healthy stand-ins exist, the webhook admits the drainer's next retry.
 
 **5. Scale back.** After the old pod leaves, the workload returns to its
-original replica count. The deletion cost makes the old pod the preferred
+original replica count, or the latest requested `baselineReplicas` when capacity
+management is enabled. The deletion cost makes the old pod the preferred
 scale-down target.
 
 ```mermaid
@@ -57,11 +58,25 @@ blue/green strategies. Pod selection additionally checks the
 `status.blueGreen.activeSelector` for blue/green. Preview pods cannot substitute
 for production capacity. During progressive delivery, pauses, or aborts, the
 controller and webhook stand down together. A release that starts during a surge
-restores the saved replica count and clears deletion-cost hints.
+removes it and clears deletion-cost hints. It applies the latest desired baseline
+when configured, otherwise the saved replica count.
 
 The operator uses Argo's native replica scaling behavior and does not manage its
 Services, traffic weights, analysis runs, or promotion steps. The Rollout watch
 is registered only when the API is discovered at startup.
+
+## Declarative baseline capacity
+
+With `spec.baselineReplicas`, Understudy continuously reconciles the workload's
+effective replica count. During handover, `understudy.sh/base-replicas` freezes
+the baseline used for both the surge and the eviction readiness threshold.
+`understudy.sh/target-revision` records the release revision so a new release
+can take over an active handover. A pending baseline remains in the CR spec,
+and completion applies its latest value rather than restoring an outdated one.
+
+Baseline reconciliation also runs during release stand-down: only disruption
+surging and holding stop. See [GitOps capacity](gitops-capacity.md) for the Argo
+field-ownership configuration, first-install behavior, status, and retirement.
 
 ## Signals
 

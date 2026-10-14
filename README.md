@@ -184,6 +184,7 @@ someone runs them on GKE and AKS.
 |---|---|---|
 | `targetRef.kind` | `Deployment` | `Deployment` (`apps/v1`) or `Rollout` (`argoproj.io/v1alpha1`) |
 | `targetRef.name` | required | The workload to protect, in the same namespace |
+| `baselineReplicas` | unset | Opt into capacity management: desired steady-state replicas; changes wait during handover. Supports zero. See [GitOps capacity](docs/gitops-capacity.md) |
 | `surgeReplicas` | 1 | How many stand-ins to add |
 | `minSurgeTimeSeconds` | 60 | How long this workload realistically takes to start serving. If a termination deadline is nearer than this, the eviction is released immediately instead of being held |
 | `readinessDeadlineSeconds` | 600 | How long to hold an eviction with no progress before giving up and letting it through |
@@ -236,13 +237,27 @@ revision (or the blue/green active revision) count as stand-ins. Ready preview
 pods and old revisions cannot release a production pod's eviction hold.
 
 During an update, pause, or abort, Understudy stands down and admits evictions.
-If a release begins during an Understudy surge, it restores the original replica
-count and relinquishes the hold. Progressive delivery remains Argo's responsibility.
+If a release begins during an Understudy surge, it removes the surge and
+relinquishes the hold. With `baselineReplicas`, it applies the latest requested
+baseline; otherwise it restores the original replica count. Progressive delivery
+remains Argo's responsibility.
 
 Argo Rollouts must already be installed. Its API is detected at operator startup;
 restart Understudy if you install the Rollout CRD later. Clusters without Argo
 Rollouts continue to support Deployments. As with Deployments, another reconciler
 (such as an HPA or GitOps tool) must not overwrite the temporary replica increase.
+
+### GitOps capacity
+
+Argo CD keeps Kubernetes aligned with Git; Argo Rollouts manages application
+releases. These are separate jobs. For either a Deployment or a Rollout managed
+by Argo CD, set `spec.baselineReplicas` on the Understudy resource and delegate
+the workload's effective `spec.replicas` to Understudy.
+
+Git capacity changes then converge automatically. During a drain handover,
+Understudy preserves its captured baseline plus surge and applies the latest
+requested baseline afterward. `BaselineApplied=False` reports a pending change.
+See [the complete ownership configuration and lifecycle](docs/gitops-capacity.md).
 
 ## How it works
 

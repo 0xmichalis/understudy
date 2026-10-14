@@ -2,6 +2,29 @@
 
 Version-to-version notes. Anything not mentioned here needs no action.
 
+## 0.4.3 to 0.4.4
+
+`spec.baselineReplicas` opts into continuous capacity management. Existing
+resources without it retain reactive-only protection. Install the updated
+operator and CRD together before enabling it; v0.4.3 does not implement this
+contract. [GitOps capacity](docs/gitops-capacity.md) documents the exact Argo
+ownership settings and lifecycle for Deployments and Rollouts.
+
+Helm does not upgrade files in `crds/`. Apply the v0.4.4 schema first, then
+upgrade the chart and operator:
+
+```sh
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/mitis-cloud/understudy/v0.4.4/charts/understudy/crds/apps.understudy.sh_understudies.yaml
+
+helm upgrade understudy oci://ghcr.io/kylan11/charts/understudy \
+  --namespace understudy-system --version 0.4.4
+```
+
+Then configure the desired baseline and Argo ignore rules together. Do not
+enable only the ignore rules: without the new
+baseline input, intentional Git capacity changes would still be ignored.
+
 ## 0.4.2 to 0.4.3
 
 Argo Rollouts are now supported with `targetRef.kind: Rollout`. Both canary and

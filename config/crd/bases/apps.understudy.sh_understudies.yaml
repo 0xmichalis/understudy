@@ -53,6 +53,12 @@ spec:
             type: object
           spec:
             properties:
+              baselineReplicas:
+                description: BaselineReplicas opts into capacity management; changes
+                  wait during handover.
+                format: int32
+                minimum: 0
+                type: integer
               holdMode:
                 enum:
                 - always
@@ -97,6 +103,11 @@ spec:
             type: object
           status:
             properties:
+              baselineReplicas:
+                description: BaselineReplicas is the applied baseline, frozen while
+                  a handover is active.
+                format: int32
+                type: integer
               blockedSince:
                 format: date-time
                 type: string
