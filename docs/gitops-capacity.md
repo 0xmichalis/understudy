@@ -1,7 +1,8 @@
 # GitOps capacity contract
 
-This feature is unreleased (after v0.4.3). It requires the updated Understudy
-CRD and operator from the same revision; v0.4.3 does not support the field.
+Available starting with **Understudy v0.4.4**, Helm chart **0.4.4**, and its
+`apps.understudy.sh/v1alpha1` CRD. Upgrade the CRD and operator together;
+v0.4.3 does not support the field.
 
 Git supplies the **desired baseline**. Understudy owns **effective replicas**:
 the normal baseline plus temporary capacity while handing over departing pods.

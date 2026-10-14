@@ -1,5 +1,17 @@
 # Roadmap
 
+## v0.4.4 - GitOps baseline capacity
+
+`spec.baselineReplicas` lets Git supply the desired baseline while Understudy
+owns effective Deployment or Rollout replicas. Changes during handover remain
+pending and the latest value converges afterward, including scale-to-zero.
+`BaselineApplied` reports that state. Application release takeover applies the
+latest baseline while disruption protection stands down.
+
+The [Argo CD ownership contract](gitops-capacity.md) was validated against
+Argo CD 3.5.5 and Argo Rollouts 1.10.1 with automatic sync and self-heal enabled,
+including unrelated sync, operator restart, and release-during-handover checks.
+
 ## v0.4.3 - Argo Rollouts
 
 Fully promoted canary and blue/green Rollouts can now be protected using
@@ -46,8 +58,8 @@ v0.4.x and will be removed in v0.5.0.
   readiness instead of merely observed.
 - **GCP and Azure live validation.** Both sentinels remain experimental until
   exercised against their real metadata services.
-- **GitOps coexistence.** Document Argo CD and Flux `ignoreDifferences`
-  recipes, or move surge state to a separate standby Deployment.
+- **Flux coexistence.** Validate and document Flux field delegation for the
+  declarative baseline capacity contract.
 - **EvictionRequest migration.** KEP-4563 is the future interception point.
   When drainers adopt it, the same state machine can respond before acking
   without changing the product boundary.
