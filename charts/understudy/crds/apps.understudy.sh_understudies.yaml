@@ -84,6 +84,7 @@ spec:
                 properties:
                   kind:
                     default: Deployment
+                    description: Kind is Deployment (apps/v1) or Rollout (argoproj.io/v1alpha1).
                     type: string
                   name:
                     minLength: 1

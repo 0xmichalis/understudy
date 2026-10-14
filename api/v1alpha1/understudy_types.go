@@ -48,6 +48,7 @@ const (
 )
 
 type TargetReference struct {
+	// Kind is Deployment (apps/v1) or Rollout (argoproj.io/v1alpha1).
 	// +kubebuilder:default=Deployment
 	// +optional
 	Kind string `json:"kind,omitempty"`

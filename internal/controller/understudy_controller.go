@@ -19,17 +19,17 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
+	rolloutsv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,10 +40,11 @@ import (
 	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
 	"github.com/kylan11/understudy/internal/metrics"
 	"github.com/kylan11/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/workload"
 )
 
 const (
-	AnnotationBaseReplicas    = "understudy.sh/base-replicas"
+	AnnotationBaseReplicas    = workload.AnnotationBaseReplicas
 	LabelOwned                = "understudy.sh/owned"
 	PodDeletionCostAnnotation = "controller.kubernetes.io/pod-deletion-cost"
 	doomedPodDeletionCost     = "-1000"
@@ -76,6 +77,7 @@ type podAssessment struct {
 // +kubebuilder:rbac:groups=apps.understudy.sh,resources=understudies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps.understudy.sh,resources=understudies/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
@@ -93,42 +95,36 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	status := *cr.Status.DeepCopy()
 
-	if kind := cr.Spec.TargetRef.Kind; kind != "" && kind != "Deployment" {
+	if kind := cr.Spec.TargetRef.Kind; !workload.Supported(kind) {
 		return r.markUnsupported(ctx, &cr, status,
-			fmt.Sprintf("target kind %q is not supported (only Deployment); skipping", kind))
+			fmt.Sprintf("target kind %q is not supported (only Deployment and Rollout); skipping", kind))
 	}
-	if cr.Namespace == r.OperatorNamespace && cr.Spec.TargetRef.Name == r.OperatorDeployment && r.OperatorDeployment != "" {
+	if cr.Spec.TargetRef.Kind != workload.KindRollout && cr.Namespace == r.OperatorNamespace && cr.Spec.TargetRef.Name == r.OperatorDeployment && r.OperatorDeployment != "" {
 		return r.markUnsupported(ctx, &cr, status,
 			"refusing to manage the Understudy operator itself (self-exclusion fail-safe)")
 	}
 
-	var dep appsv1.Deployment
-	if err := r.Get(ctx, types.NamespacedName{Namespace: cr.Namespace, Name: cr.Spec.TargetRef.Name}, &dep); err != nil {
+	target, err := workload.Resolve(ctx, r.Client,
+		types.NamespacedName{Namespace: cr.Namespace, Name: cr.Spec.TargetRef.Name}, cr.Spec.TargetRef.Kind)
+	if err != nil {
+		if meta.IsNoMatchError(err) {
+			return r.markUnsupported(ctx, &cr, status, "Rollout API is unavailable; install Argo Rollouts and restart Understudy")
+		}
 		if apierrors.IsNotFound(err) {
 			setCond(&status, &cr, appsv1alpha1.ConditionTargetSupported, metav1.ConditionFalse,
-				"TargetNotFound", fmt.Sprintf("Deployment %q not found", cr.Spec.TargetRef.Name))
+				"TargetNotFound", fmt.Sprintf("target %q not found", cr.Spec.TargetRef.Name))
 			status.Phase = appsv1alpha1.PhaseIdle
 			return ctrl.Result{}, r.patchStatus(ctx, &cr, status)
 		}
 		return ctrl.Result{}, err
 	}
-	setCond(&status, &cr, appsv1alpha1.ConditionTargetSupported, metav1.ConditionTrue, "Deployment", "target resolved")
+	setCond(&status, &cr, appsv1alpha1.ConditionTargetSupported, metav1.ConditionTrue, target.Kind(), "target resolved")
 
-	surgeActive := false
-	base := int32(1)
-	if dep.Spec.Replicas != nil {
-		base = *dep.Spec.Replicas
-	}
-	if v, ok := dep.Annotations[AnnotationBaseReplicas]; ok {
-		if parsed, err := strconv.ParseInt(v, 10, 32); err == nil {
-			base = int32(parsed)
-			surgeActive = true
-		}
-	}
+	base, surgeActive := target.BaseReplicas()
+	zeroDowntime, reason, message := target.ZeroDowntimeStrategy(base)
+	setCond(&status, &cr, appsv1alpha1.ConditionZeroDowntimeStrategy, boolToStatus(zeroDowntime), reason, message)
 
-	r.setStrategyCondition(&status, &cr, &dep, base)
-
-	assessment, err := r.assessPods(ctx, &cr, &dep)
+	assessment, err := r.assessPods(ctx, &cr, target)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -140,6 +136,26 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			"spec.hostageMode is deprecated and will be removed; rename it to spec.holdMode")
 	}
 	status.Mode = mode
+	if target.StandDown() {
+		if surgeActive {
+			if err := r.clearDeletionCosts(ctx, assessment.all); err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := target.PatchReplicas(ctx, r.Client, base, nil); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		status.Phase = appsv1alpha1.PhaseIdle
+		status.BlockedSince = nil
+		metrics.UntrackBlocked(req.String())
+		setCond(&status, &cr, appsv1alpha1.ConditionProtected, metav1.ConditionFalse,
+			"RolloutInProgress", "target is mid-rollout; evictions are admitted")
+		setCond(&status, &cr, appsv1alpha1.ConditionSurgeReady, metav1.ConditionFalse,
+			"RolloutInProgress", "target is mid-rollout; standing down")
+		r.eventOnce(&cr, &status, corev1.EventTypeNormal, "RolloutStandDown", "Skip",
+			fmt.Sprintf("standing down for %s: rollout in progress", target.GetName()))
+		return ctrl.Result{RequeueAfter: activeRequeue}, r.patchStatus(ctx, &cr, status)
+	}
 	relaxReason, ttlExpired := r.relaxDecision(&cr, mode, assessment, surgeReady, status.BlockedSince)
 	setProtectedCondition(&status, &cr, mode, relaxReason)
 
@@ -152,16 +168,20 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, r.patchStatus(ctx, &cr, status)
 
 	case len(assessment.doomed) == 0 && surgeActive:
-		return r.reconcileScaleBack(ctx, &cr, &dep, status, assessment, base, req)
+		return r.reconcileScaleBack(ctx, &cr, target, status, assessment, base, req)
 
 	default:
-		return r.reconcileDoomed(ctx, &cr, &dep, status, assessment, base, surgeActive, surgeReady, relaxReason, ttlExpired, req)
+		return r.reconcileDoomed(ctx, &cr, target, status, assessment, base, surgeActive, surgeReady, relaxReason, ttlExpired, req)
 	}
 }
 
-func (r *UnderstudyReconciler) assessPods(ctx context.Context, cr *appsv1alpha1.Understudy, dep *appsv1.Deployment) (podAssessment, error) {
+func (r *UnderstudyReconciler) assessPods(ctx context.Context, cr *appsv1alpha1.Understudy, target *workload.Target) (podAssessment, error) {
 	var a podAssessment
-	selector, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
+	selector, err := target.Selector()
+	if err != nil {
+		return a, err
+	}
+	serving, err := target.ServingSelector()
 	if err != nil {
 		return a, err
 	}
@@ -172,7 +192,7 @@ func (r *UnderstudyReconciler) assessPods(ctx context.Context, cr *appsv1alpha1.
 	a.all = podList.Items
 	for i := range podList.Items {
 		pod := &podList.Items[i]
-		if pod.Spec.NodeName == "" || pod.DeletionTimestamp != nil {
+		if !serving.Matches(labels.Set(pod.Labels)) || pod.Spec.NodeName == "" || pod.DeletionTimestamp != nil {
 			continue
 		}
 		if doom, doomed := r.Registry.Lookup(pod.Spec.NodeName); doomed {
@@ -215,12 +235,12 @@ func (r *UnderstudyReconciler) relaxDecision(cr *appsv1alpha1.Understudy, mode a
 }
 
 func (r *UnderstudyReconciler) reconcileScaleBack(ctx context.Context, cr *appsv1alpha1.Understudy,
-	dep *appsv1.Deployment, status appsv1alpha1.UnderstudyStatus, a podAssessment, base int32,
+	target *workload.Target, status appsv1alpha1.UnderstudyStatus, a podAssessment, base int32,
 	req ctrl.Request) (ctrl.Result, error) {
 	if err := r.clearDeletionCosts(ctx, a.all); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.scaleTo(ctx, dep, base); err != nil {
+	if err := target.PatchReplicas(ctx, r.Client, base, nil); err != nil {
 		return ctrl.Result{}, err
 	}
 	now := metav1.Now()
@@ -229,13 +249,13 @@ func (r *UnderstudyReconciler) reconcileScaleBack(ctx context.Context, cr *appsv
 	status.Phase = appsv1alpha1.PhaseIdle
 	metrics.UntrackBlocked(req.String())
 	r.event(cr, corev1.EventTypeNormal, "ScaledBack", "Release",
-		fmt.Sprintf("predicament over; scaled %s back to %d replicas", dep.Name, base))
-	logf.FromContext(ctx).Info("scaled back", "deployment", dep.Name, "replicas", base)
+		fmt.Sprintf("predicament over; scaled %s back to %d replicas", target.GetName(), base))
+	logf.FromContext(ctx).Info("Scaled back workload", "kind", target.Kind(), "name", target.GetName(), "replicas", base)
 	return ctrl.Result{}, r.patchStatus(ctx, cr, status)
 }
 
 func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1alpha1.Understudy,
-	dep *appsv1.Deployment, status appsv1alpha1.UnderstudyStatus, a podAssessment, base int32,
+	target *workload.Target, status appsv1alpha1.UnderstudyStatus, a podAssessment, base int32,
 	surgeActive, surgeReady bool, relaxReason string, ttlExpired bool, req ctrl.Request) (ctrl.Result, error) {
 
 	if status.BlockedSince == nil {
@@ -244,17 +264,8 @@ func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1al
 	}
 	metrics.TrackBlocked(req.String(), status.BlockedSince.Time)
 
-	if !surgeActive && rolloutInProgress(dep, base) {
-		status.Phase = appsv1alpha1.PhaseIdle
-		setCond(&status, cr, appsv1alpha1.ConditionSurgeReady, metav1.ConditionFalse,
-			"RolloutInProgress", "target is mid-rollout; standing down (the Deployment is already surging)")
-		r.eventOnce(cr, &status, corev1.EventTypeNormal, "RolloutStandDown", "Skip",
-			fmt.Sprintf("doom signal for %s ignored: rollout in progress", dep.Name))
-		return ctrl.Result{RequeueAfter: activeRequeue}, r.patchStatus(ctx, cr, status)
-	}
-
 	if !surgeActive {
-		if err := r.startSurge(ctx, cr, dep, base); err != nil {
+		if err := target.PatchReplicas(ctx, r.Client, base+cr.SurgeReplicasOrDefault(), &base); err != nil {
 			return ctrl.Result{}, err
 		}
 		now := metav1.Now()
@@ -266,7 +277,7 @@ func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1al
 		metrics.SurgesTotal.WithLabelValues(string(class)).Inc()
 		r.event(cr, corev1.EventTypeNormal, "SurgeStarted", "Surge",
 			fmt.Sprintf("node doom (%s) for pod(s) of %s; surging %d -> %d",
-				doomSource(a.worstDoom), dep.Name, base, base+cr.SurgeReplicasOrDefault()))
+				doomSource(a.worstDoom), target.GetName(), base, base+cr.SurgeReplicasOrDefault()))
 	}
 
 	if err := r.stampDeletionCosts(ctx, a.doomed); err != nil {
@@ -280,7 +291,7 @@ func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1al
 		setCond(&status, cr, appsv1alpha1.ConditionSurgeReady, metav1.ConditionTrue,
 			"UnderstudyReady", "understudy is traffic-ready; eviction may proceed")
 		r.eventOnce(cr, &status, corev1.EventTypeNormal, "SurgeReady", "Release",
-			fmt.Sprintf("understudy for %s is traffic-ready; releasing the eviction", dep.Name))
+			fmt.Sprintf("understudy for %s is traffic-ready; releasing the eviction", target.GetName()))
 	case relaxReason != "" || ttlExpired:
 		status.Phase = appsv1alpha1.PhaseRelaxed
 		setCond(&status, cr, appsv1alpha1.ConditionSurgeReady, metav1.ConditionFalse,
@@ -293,31 +304,13 @@ func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1al
 			metrics.RelaxedTotal.WithLabelValues(relaxReason).Inc()
 		}
 		r.eventOnce(cr, &status, corev1.EventTypeWarning, "HoldRelaxed", "Relax",
-			fmt.Sprintf("eviction hold for %s relaxed (%s); eviction can proceed without a ready understudy", dep.Name, relaxReason))
+			fmt.Sprintf("eviction hold for %s relaxed (%s); eviction can proceed without a ready understudy", target.GetName(), relaxReason))
 	default:
 		status.Phase = appsv1alpha1.PhaseSurging
 		setCond(&status, cr, appsv1alpha1.ConditionSurgeReady, metav1.ConditionFalse,
 			"AwaitingReadiness", fmt.Sprintf("waiting for %d ready replica(s) on healthy nodes (have %d)", base, a.viable))
 	}
 	return ctrl.Result{RequeueAfter: activeRequeue}, r.patchStatus(ctx, cr, status)
-}
-
-func (r *UnderstudyReconciler) startSurge(ctx context.Context, cr *appsv1alpha1.Understudy, dep *appsv1.Deployment, base int32) error {
-	patched := dep.DeepCopy()
-	if patched.Annotations == nil {
-		patched.Annotations = map[string]string{}
-	}
-	patched.Annotations[AnnotationBaseReplicas] = strconv.FormatInt(int64(base), 10)
-	target := base + cr.SurgeReplicasOrDefault()
-	patched.Spec.Replicas = &target
-	return r.Patch(ctx, patched, client.MergeFrom(dep))
-}
-
-func (r *UnderstudyReconciler) scaleTo(ctx context.Context, dep *appsv1.Deployment, replicas int32) error {
-	patched := dep.DeepCopy()
-	patched.Spec.Replicas = &replicas
-	delete(patched.Annotations, AnnotationBaseReplicas)
-	return r.Patch(ctx, patched, client.MergeFrom(dep))
 }
 
 func (r *UnderstudyReconciler) stampDeletionCosts(ctx context.Context, pods []*corev1.Pod) error {
@@ -363,33 +356,6 @@ func (r *UnderstudyReconciler) markUnsupported(ctx context.Context, cr *appsv1al
 	return ctrl.Result{}, r.patchStatus(ctx, cr, status)
 }
 
-func (r *UnderstudyReconciler) setStrategyCondition(status *appsv1alpha1.UnderstudyStatus,
-	cr *appsv1alpha1.Understudy, dep *appsv1.Deployment, base int32) {
-	if dep.Spec.Strategy.Type == appsv1.RecreateDeploymentStrategyType {
-		setCond(status, cr, appsv1alpha1.ConditionZeroDowntimeStrategy, metav1.ConditionFalse,
-			"Recreate", "strategy Recreate drops all traffic on every deploy")
-		return
-	}
-	maxUnavailable, maxSurge := 0, 1
-	if ru := dep.Spec.Strategy.RollingUpdate; ru != nil {
-		if ru.MaxUnavailable != nil {
-			maxUnavailable, _ = intstr.GetScaledValueFromIntOrPercent(ru.MaxUnavailable, int(base), false)
-		}
-		if ru.MaxSurge != nil {
-			maxSurge, _ = intstr.GetScaledValueFromIntOrPercent(ru.MaxSurge, int(base), true)
-		}
-	}
-	if maxUnavailable > 0 || maxSurge < 1 {
-		setCond(status, cr, appsv1alpha1.ConditionZeroDowntimeStrategy, metav1.ConditionFalse,
-			"LossyStrategy",
-			fmt.Sprintf("resolved maxUnavailable=%d, maxSurge=%d: deploys can drop traffic; set maxUnavailable: 0, maxSurge: 1",
-				maxUnavailable, maxSurge))
-		return
-	}
-	setCond(status, cr, appsv1alpha1.ConditionZeroDowntimeStrategy, metav1.ConditionTrue, "SurgingStrategy",
-		"rolling updates keep capacity during deploys")
-}
-
 func setProtectedCondition(status *appsv1alpha1.UnderstudyStatus, cr *appsv1alpha1.Understudy,
 	mode appsv1alpha1.HoldMode, relaxReason string) {
 	reason, msg := "HoldOff", "holdMode is off; evictions are admitted immediately"
@@ -430,7 +396,10 @@ func (r *UnderstudyReconciler) eventOnce(cr *appsv1alpha1.Understudy, status *ap
 
 func (r *UnderstudyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	mapDeployment := func(ctx context.Context, obj client.Object) []ctrl.Request {
-		return r.requestsForTarget(ctx, obj.GetNamespace(), obj.GetName())
+		return r.requestsForTarget(ctx, obj.GetNamespace(), obj.GetName(), workload.KindDeployment)
+	}
+	mapRollout := func(ctx context.Context, obj client.Object) []ctrl.Request {
+		return r.requestsForTarget(ctx, obj.GetNamespace(), obj.GetName(), workload.KindRollout)
 	}
 	mapPod := func(ctx context.Context, obj client.Object) []ctrl.Request {
 		return r.requestsInNamespace(ctx, obj.GetNamespace())
@@ -439,23 +408,35 @@ func (r *UnderstudyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return r.requestsInNamespace(ctx, "")
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1alpha1.Understudy{}).
 		Watches(&appsv1.Deployment{}, handler.EnqueueRequestsFromMapFunc(mapDeployment)).
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(mapPod)).
 		WatchesRawSource(source.Channel(r.Registry.Subscribe(64), handler.EnqueueRequestsFromMapFunc(mapDoom))).
-		Named("understudy").
-		Complete(r)
+		Named("understudy")
+	gvk := rolloutsv1alpha1.SchemeGroupVersion.WithKind(workload.KindRollout)
+	if _, err := mgr.GetRESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version); err == nil {
+		builder = builder.Watches(&rolloutsv1alpha1.Rollout{}, handler.EnqueueRequestsFromMapFunc(mapRollout))
+	} else if !meta.IsNoMatchError(err) {
+		return err
+	} else {
+		mgr.GetLogger().Info("Rollout API is unavailable; watching Deployments only")
+	}
+	return builder.Complete(r)
 }
 
-func (r *UnderstudyReconciler) requestsForTarget(ctx context.Context, namespace, name string) []ctrl.Request {
+func (r *UnderstudyReconciler) requestsForTarget(ctx context.Context, namespace, name, kind string) []ctrl.Request {
 	var list appsv1alpha1.UnderstudyList
 	if err := r.List(ctx, &list, client.InNamespace(namespace)); err != nil {
 		return nil
 	}
 	var reqs []ctrl.Request
 	for i := range list.Items {
-		if list.Items[i].Spec.TargetRef.Name == name {
+		ref := list.Items[i].Spec.TargetRef
+		if ref.Kind == "" {
+			ref.Kind = workload.KindDeployment
+		}
+		if ref.Name == name && ref.Kind == kind {
 			reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
 		}
 	}
@@ -485,19 +466,6 @@ func podReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
-}
-
-func rolloutInProgress(dep *appsv1.Deployment, base int32) bool {
-	if dep.Status.ObservedGeneration < dep.Generation {
-		return false
-	}
-	for _, c := range dep.Status.Conditions {
-		if c.Type == appsv1.DeploymentProgressing && c.Status == corev1.ConditionTrue &&
-			c.Reason != "NewReplicaSetAvailable" {
-			return true
-		}
-	}
-	return dep.Status.UpdatedReplicas < base
 }
 
 func setCond(status *appsv1alpha1.UnderstudyStatus, cr *appsv1alpha1.Understudy,

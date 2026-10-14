@@ -24,7 +24,6 @@ import (
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -38,13 +37,13 @@ import (
 	appsv1alpha1 "github.com/kylan11/understudy/api/v1alpha1"
 	"github.com/kylan11/understudy/internal/metrics"
 	"github.com/kylan11/understudy/internal/signal"
+	"github.com/kylan11/understudy/internal/workload"
 )
 
 const (
-	Path                   = "/observe-eviction"
-	SourcePrefix           = "eviction:"
-	baseReplicasAnnotation = "understudy.sh/base-replicas"
-	doomLifetime           = 90 * time.Second
+	Path         = "/observe-eviction"
+	SourcePrefix = "eviction:"
+	doomLifetime = 90 * time.Second
 )
 
 type Adapter struct {
@@ -55,8 +54,8 @@ type Adapter struct {
 }
 
 type protector struct {
-	cr  *appsv1alpha1.Understudy
-	dep *appsv1.Deployment
+	cr     *appsv1alpha1.Understudy
+	target *workload.Target
 }
 
 func New() *Adapter { return &Adapter{} }
@@ -116,7 +115,7 @@ func (a *Adapter) Handle(ctx context.Context, req admission.Request) admission.R
 	for _, p := range protectors {
 		if p.cr.HoldModeOrDefault() == appsv1alpha1.HoldOff ||
 			p.cr.Status.Phase == appsv1alpha1.PhaseRelaxed ||
-			a.standInReady(ctx, p.dep, pod.Spec.NodeName) {
+			a.standInReady(ctx, p.target, pod.Spec.NodeName) {
 			continue
 		}
 		metrics.EvictionsHeld.Inc()
@@ -146,47 +145,40 @@ func (a *Adapter) resolveProtectors(ctx context.Context, pod *corev1.Pod) []prot
 		if cr.Status.Phase == appsv1alpha1.PhaseUnsupported {
 			continue
 		}
-		if kind := cr.Spec.TargetRef.Kind; kind != "" && kind != "Deployment" {
+		if !workload.Supported(cr.Spec.TargetRef.Kind) {
 			continue
 		}
-		var dep appsv1.Deployment
-		if err := a.reader.Get(ctx, types.NamespacedName{Namespace: pod.Namespace, Name: cr.Spec.TargetRef.Name}, &dep); err != nil {
+		target, err := workload.Resolve(ctx, a.reader,
+			types.NamespacedName{Namespace: pod.Namespace, Name: cr.Spec.TargetRef.Name}, cr.Spec.TargetRef.Kind)
+		if err != nil || target.StandDown() {
 			continue
 		}
-		selector, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
+		selector, err := target.ServingSelector()
 		if err != nil {
 			continue
 		}
 		if selector.Matches(labels.Set(pod.Labels)) {
-			protectors = append(protectors, protector{cr: cr, dep: &dep})
+			protectors = append(protectors, protector{cr: cr, target: target})
 		}
 	}
 	return protectors
 }
 
-func (a *Adapter) standInReady(ctx context.Context, dep *appsv1.Deployment, victimNode string) bool {
-	base := int32(1)
-	if dep.Spec.Replicas != nil {
-		base = *dep.Spec.Replicas
-	}
-	if v, ok := dep.Annotations[baseReplicasAnnotation]; ok {
-		if parsed, err := strconv.ParseInt(v, 10, 32); err == nil {
-			base = int32(parsed)
-		}
-	}
-	selector, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
+func (a *Adapter) standInReady(ctx context.Context, target *workload.Target, victimNode string) bool {
+	base, _ := target.BaseReplicas()
+	selector, err := target.ServingSelector()
 	if err != nil {
 		return false
 	}
 	var pods corev1.PodList
-	if err := a.reader.List(ctx, &pods, client.InNamespace(dep.Namespace),
+	if err := a.reader.List(ctx, &pods, client.InNamespace(target.GetNamespace()),
 		client.MatchingLabelsSelector{Selector: selector}); err != nil {
 		return false
 	}
 	healthy := 0
 	for i := range pods.Items {
 		p := &pods.Items[i]
-		if p.DeletionTimestamp != nil {
+		if p.DeletionTimestamp != nil || p.Spec.NodeName == "" {
 			continue
 		}
 		if p.Spec.NodeName == victimNode {

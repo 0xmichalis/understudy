@@ -2,6 +2,28 @@
 
 Version-to-version notes. Anything not mentioned here needs no action.
 
+## 0.4.2 to 0.4.3
+
+Argo Rollouts are now supported with `targetRef.kind: Rollout`. Both canary and
+blue/green strategies are protected once fully promoted. Install Argo Rollouts
+before starting Understudy, or restart Understudy after installing its CRD.
+Existing Deployment targets need no configuration changes.
+
+Upgrade the chart to install the Rollout permissions alongside the new image:
+
+```sh
+helm upgrade understudy oci://ghcr.io/kylan11/charts/understudy \
+  --namespace understudy-system --version 0.4.3
+```
+
+If you manage RBAC yourself (`rbac.create: false`), grant `get`, `list`, `watch`,
+`update`, and `patch` on `rollouts` in the `argoproj.io` API group.
+
+The eviction webhook now stands down together with the controller during a
+target's release. Rollouts that are updating, paused, or aborted are not held;
+preview pods cannot count as production replacements. See
+[Argo Rollouts](README.md#argo-rollouts) for the full behavior.
+
 ## 0.4.0 to 0.4.1
 
 `hostageMode` is now `holdMode`. The old spelling described a budget that

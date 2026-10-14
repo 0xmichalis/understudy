@@ -69,6 +69,16 @@ rules:
   - patch
   - update
 - apiGroups:
+  - argoproj.io
+  resources:
+  - rollouts
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - events.k8s.io
   resources:
   - events

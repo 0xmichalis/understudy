@@ -18,6 +18,11 @@
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/kylan11/understudy?style=for-the-badge"></a>
     <a href="https://github.com/kylan11/understudy/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/kylan11/understudy?style=for-the-badge&color=e3b341"></a>
   </p>
+  <p>
+    <a href="https://faun.dev/toolbox/understudy/"><img alt="FAUN.dev score: 74/100" src="https://faun.dev/toolbox/understudy/badge.svg?kind=score"></a>
+    <a href="https://faun.dev/toolbox/understudy/"><img alt="Code: Open source" src="https://faun.dev/toolbox/understudy/badge.svg?kind=code"></a>
+    <a href="https://faun.dev/toolbox/understudy/"><img alt="License: Apache-2.0" src="https://faun.dev/toolbox/understudy/badge.svg?kind=license"></a>
+  </p>
   <img src="docs/assets/terminal-demo.svg" width="720" alt="Terminal simulation: the pod in production receives a spot interruption notice, Understudy holds the eviction and starts a stand-in pod that goes from Pending to Running; only then does the original terminate. The probe records 764 requests, 1 failed.">
 </div>
 
@@ -27,9 +32,9 @@ protection against unannounced hardware death. That last one is what a second
 replica is for, and nothing changes it.
 
 In theatre the understudy waits in the wings and steps in when the lead exits.
-This operator does the same for a single-replica Deployment: when a node is
-going away, it brings up a stand-in pod, waits until that pod is genuinely
-serving traffic, and only then lets the original leave. The second pod exists
+This operator does the same for a single-replica Deployment or Argo Rollout:
+when a node is going away, it brings up a stand-in pod, waits until that pod is
+genuinely serving traffic, and only then lets the original leave. The second pod exists
 for the couple of minutes a disruption is actually in flight.
 
 ```yaml
@@ -177,7 +182,8 @@ someone runs them on GKE and AKS.
 
 | Field | Default | What it does |
 |---|---|---|
-| `targetRef.name` | required | The Deployment to protect, in the same namespace |
+| `targetRef.kind` | `Deployment` | `Deployment` (`apps/v1`) or `Rollout` (`argoproj.io/v1alpha1`) |
+| `targetRef.name` | required | The workload to protect, in the same namespace |
 | `surgeReplicas` | 1 | How many stand-ins to add |
 | `minSurgeTimeSeconds` | 60 | How long this workload realistically takes to start serving. If a termination deadline is nearer than this, the eviction is released immediately instead of being held |
 | `readinessDeadlineSeconds` | 600 | How long to hold an eviction with no progress before giving up and letting it through |
@@ -206,6 +212,37 @@ everything.
 If you run on spot without the sentinel, set `readinessDeadlineSeconds` below
 the platform's notice window, otherwise the operator can hold an eviction
 against a deadline it cannot see.
+
+### Argo Rollouts
+
+Protect an Argo Rollout by setting `targetRef.kind: Rollout`:
+
+```yaml
+apiVersion: apps.understudy.sh/v1alpha1
+kind: Understudy
+metadata:
+  name: tenant-worker
+spec:
+  targetRef:
+    kind: Rollout
+    name: tenant-worker
+  holdMode: always
+```
+
+Both canary and blue/green strategies are supported once fully promoted.
+Understudy scales the Rollout's `spec.replicas`; Argo Rollouts continues to
+manage its ReplicaSets and traffic routing. Only ready pods from the stable
+revision (or the blue/green active revision) count as stand-ins. Ready preview
+pods and old revisions cannot release a production pod's eviction hold.
+
+During an update, pause, or abort, Understudy stands down and admits evictions.
+If a release begins during an Understudy surge, it restores the original replica
+count and relinquishes the hold. Progressive delivery remains Argo's responsibility.
+
+Argo Rollouts must already be installed. Its API is detected at operator startup;
+restart Understudy if you install the Rollout CRD later. Clusters without Argo
+Rollouts continue to support Deployments. As with Deployments, another reconciler
+(such as an HPA or GitOps tool) must not overwrite the temporary replica increase.
 
 ## How it works
 
@@ -272,7 +309,7 @@ including single-replica StatefulSets, and always will be.
 ## Development
 
 ```sh
-make test    # envtest suite, downloads Kubernetes binaries on first run
+make test    # envtest suite, including the upstream Argo Rollout CRD
 make lint
 make build
 ```

@@ -28,6 +28,8 @@ jobs:
           go-version-file: go.mod
       - name: Test (envtest)
         run: make test
+      - name: Test startup without Argo Rollouts
+        run: ARGO_ROLLOUTS_CRD= go test ./internal/controller -ginkgo.focus='Optional Rollout API'
 
   build:
     runs-on: ubuntu-latest
