@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	rolloutsv1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -74,6 +75,7 @@ var _ = BeforeSuite(func() {
 	var err error
 	err = appsv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	Expect(rolloutsv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	// +kubebuilder:scaffold:scheme
 
@@ -84,6 +86,10 @@ var _ = BeforeSuite(func() {
 		WebhookInstallOptions: envtest.WebhookInstallOptions{
 			ValidatingWebhooks: []*admissionv1.ValidatingWebhookConfiguration{evictionWebhookConfig()},
 		},
+	}
+
+	if path := os.Getenv("ARGO_ROLLOUTS_CRD"); path != "" {
+		testEnv.CRDDirectoryPaths = append(testEnv.CRDDirectoryPaths, path)
 	}
 
 	if getFirstFoundEnvTestBinaryDir() != "" {

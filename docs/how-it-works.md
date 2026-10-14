@@ -1,7 +1,7 @@
 # How Understudy works
 
-Understudy protects a single-replica Deployment during announced node
-disruptions without keeping a second replica running all the time.
+Understudy protects a single-replica Deployment or Argo Rollout during announced
+node disruptions without keeping a second replica running all the time.
 
 ## The mechanism
 
@@ -16,7 +16,7 @@ select a node without being blocked by a budget pre-check.
 **2. Record the node as doomed.** Cordon, taint, eviction and optional cloud
 sentinel adapters normalize their observations into a `NodeDoom`.
 
-**3. Surge.** The controller increases the Deployment replica count and marks
+**3. Surge.** The controller increases the target workload's replica count and marks
 the old pod with a negative `controller.kubernetes.io/pod-deletion-cost`.
 
 **4. Wait for traffic readiness.** A stand-in counts only when it is Ready, is
@@ -24,7 +24,7 @@ not deleting, and runs on neither the victim node nor another doomed node.
 Readiness gates therefore include load balancer registration. Once enough
 healthy stand-ins exist, the webhook admits the drainer's next retry.
 
-**5. Scale back.** After the old pod leaves, the Deployment returns to its
+**5. Scale back.** After the old pod leaves, the workload returns to its
 original replica count. The deletion cost makes the old pod the preferred
 scale-down target.
 
@@ -48,6 +48,20 @@ sequenceDiagram
     K-->>D: accepted
     U->>W: replicas back to 1
 ```
+
+## Argo Rollouts
+
+For Argo Rollouts, the same mechanism applies to fully promoted canary and
+blue/green strategies. Pod selection additionally checks the
+`rollouts-pod-template-hash` against `status.stableRS`, or against
+`status.blueGreen.activeSelector` for blue/green. Preview pods cannot substitute
+for production capacity. During progressive delivery, pauses, or aborts, the
+controller and webhook stand down together. A release that starts during a surge
+restores the saved replica count and clears deletion-cost hints.
+
+The operator uses Argo's native replica scaling behavior and does not manage its
+Services, traffic weights, analysis runs, or promotion steps. The Rollout watch
+is registered only when the API is discovered at startup.
 
 ## Signals
 
@@ -113,7 +127,7 @@ flowchart TD
 
 | Phase | Meaning |
 |---|---|
-| `Idle` | No disruption is active; matching evictions are protected |
+| `Idle` | No surge is active; check `Protected` for eviction protection (false during progressive delivery) |
 | `Surging` | A doomed node was seen and the stand-in is not ready |
 | `Releasing` | A healthy stand-in is ready and eviction retries are admitted |
 | `Relaxed` | The hold was released without a ready stand-in |
