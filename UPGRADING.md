@@ -2,6 +2,25 @@
 
 Version-to-version notes. Anything not mentioned here needs no action.
 
+## After 0.4.3 (unreleased): optional GitOps baseline capacity
+
+`spec.baselineReplicas` opts into continuous capacity management. Existing
+resources without it retain reactive-only protection. Install the updated
+operator and CRD together before enabling it; v0.4.3 does not implement this
+contract. [GitOps capacity](docs/gitops-capacity.md) documents the exact Argo
+ownership settings and lifecycle for Deployments and Rollouts.
+
+Helm does not upgrade files in `crds/`. From a checkout of the same revision as
+the operator/chart being installed, apply the generated schema first:
+
+```sh
+kubectl apply --server-side -f charts/understudy/crds/apps.understudy.sh_understudies.yaml
+```
+
+Then upgrade the operator/chart and configure the desired baseline and Argo
+ignore rules together. Do not enable only the ignore rules: without the new
+baseline input, intentional Git capacity changes would still be ignored.
+
 ## 0.4.2 to 0.4.3
 
 Argo Rollouts are now supported with `targetRef.kind: Rollout`. Both canary and

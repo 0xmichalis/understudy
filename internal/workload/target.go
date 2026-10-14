@@ -31,9 +31,10 @@ import (
 )
 
 const (
-	AnnotationBaseReplicas = "understudy.sh/base-replicas"
-	KindDeployment         = "Deployment"
-	KindRollout            = "Rollout"
+	AnnotationBaseReplicas   = "understudy.sh/base-replicas"
+	AnnotationTargetRevision = "understudy.sh/target-revision"
+	KindDeployment           = "Deployment"
+	KindRollout              = "Rollout"
 )
 
 type Target struct {
@@ -73,6 +74,10 @@ func (t *Target) BaseReplicas() (int32, bool) {
 			return int32(parsed), true
 		}
 	}
+	return t.Replicas(), false
+}
+
+func (t *Target) Replicas() int32 {
 	var replicas *int32
 	switch obj := t.Object.(type) {
 	case *appsv1.Deployment:
@@ -81,9 +86,16 @@ func (t *Target) BaseReplicas() (int32, bool) {
 		replicas = obj.Spec.Replicas
 	}
 	if replicas == nil {
-		return 1, false
+		return 1
 	}
-	return *replicas, false
+	return *replicas
+}
+
+func (t *Target) revision() string {
+	if ro, ok := t.Object.(*rolloutsv1alpha1.Rollout); ok {
+		return ro.Status.CurrentPodHash
+	}
+	return t.GetAnnotations()["deployment.kubernetes.io/revision"]
 }
 
 func (t *Target) Selector() (labels.Selector, error) {
@@ -125,8 +137,12 @@ func (t *Target) PatchReplicas(ctx context.Context, c client.Client, replicas in
 	}
 	if base == nil {
 		delete(annotations, AnnotationBaseReplicas)
+		delete(annotations, AnnotationTargetRevision)
 	} else {
 		annotations[AnnotationBaseReplicas] = strconv.FormatInt(int64(*base), 10)
+		if _, active := t.BaseReplicas(); !active && t.revision() != "" {
+			annotations[AnnotationTargetRevision] = t.revision()
+		}
 	}
 	patched.SetAnnotations(annotations)
 	switch obj := patched.(type) {
@@ -140,10 +156,16 @@ func (t *Target) PatchReplicas(ctx context.Context, c client.Client, replicas in
 
 func (t *Target) StandDown() bool {
 	base, surging := t.BaseReplicas()
+	if revision := t.GetAnnotations()[AnnotationTargetRevision]; surging && revision != "" && revision != t.revision() {
+		return true
+	}
 	switch obj := t.Object.(type) {
 	case *appsv1.Deployment:
-		if surging || obj.Status.ObservedGeneration < obj.Generation {
+		if surging {
 			return false
+		}
+		if obj.Status.ObservedGeneration < obj.Generation {
+			return true
 		}
 		for _, c := range obj.Status.Conditions {
 			if c.Type == appsv1.DeploymentProgressing && c.Status == corev1.ConditionTrue && c.Reason != "NewReplicaSetAvailable" {

@@ -45,6 +45,7 @@ const (
 	ConditionProtected            = "Protected"
 	ConditionSurgeReady           = "SurgeReady"
 	ConditionZeroDowntimeStrategy = "ZeroDowntimeUpdateStrategy"
+	ConditionBaselineApplied      = "BaselineApplied"
 )
 
 type TargetReference struct {
@@ -61,6 +62,11 @@ type TargetReference struct {
 type UnderstudySpec struct {
 	// +required
 	TargetRef TargetReference `json:"targetRef"`
+
+	// BaselineReplicas opts into capacity management; changes wait during handover.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	BaselineReplicas *int32 `json:"baselineReplicas,omitempty"`
 
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
@@ -85,6 +91,10 @@ type UnderstudySpec struct {
 }
 
 type UnderstudyStatus struct {
+	// BaselineReplicas is the applied baseline, frozen while a handover is active.
+	// +optional
+	BaselineReplicas *int32 `json:"baselineReplicas,omitempty"`
+
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 

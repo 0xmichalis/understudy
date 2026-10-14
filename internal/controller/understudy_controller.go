@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -121,6 +122,11 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	setCond(&status, &cr, appsv1alpha1.ConditionTargetSupported, metav1.ConditionTrue, target.Kind(), "target resolved")
 
 	base, surgeActive := target.BaseReplicas()
+	desiredBase := base
+	if cr.Spec.BaselineReplicas != nil {
+		desiredBase = *cr.Spec.BaselineReplicas
+	}
+	setBaselineCondition(&status, &cr, base)
 	zeroDowntime, reason, message := target.ZeroDowntimeStrategy(base)
 	setCond(&status, &cr, appsv1alpha1.ConditionZeroDowntimeStrategy, boolToStatus(zeroDowntime), reason, message)
 
@@ -141,10 +147,13 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if err := r.clearDeletionCosts(ctx, assessment.all); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := target.PatchReplicas(ctx, r.Client, base, nil); err != nil {
+		}
+		if surgeActive || cr.Spec.BaselineReplicas != nil && target.Replicas() != desiredBase {
+			if err := target.PatchReplicas(ctx, r.Client, desiredBase, nil); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
+		setBaselineCondition(&status, &cr, desiredBase)
 		status.Phase = appsv1alpha1.PhaseIdle
 		status.BlockedSince = nil
 		metrics.UntrackBlocked(req.String())
@@ -160,15 +169,21 @@ func (r *UnderstudyReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	setProtectedCondition(&status, &cr, mode, relaxReason)
 
 	switch {
-	case len(assessment.doomed) == 0 && !surgeActive:
+	case !surgeActive && (len(assessment.doomed) == 0 || base == 0):
+		if cr.Spec.BaselineReplicas != nil && target.Replicas() != desiredBase {
+			if err := target.PatchReplicas(ctx, r.Client, desiredBase, nil); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		setBaselineCondition(&status, &cr, desiredBase)
 		status.Phase = appsv1alpha1.PhaseIdle
 		status.BlockedSince = nil
 		metrics.UntrackBlocked(req.String())
-		setCond(&status, &cr, appsv1alpha1.ConditionSurgeReady, boolToStatus(surgeReady), "Steady", "no disruption in sight")
+		setCond(&status, &cr, appsv1alpha1.ConditionSurgeReady, boolToStatus(assessment.viable >= int(desiredBase)), "Steady", "no disruption in sight")
 		return ctrl.Result{}, r.patchStatus(ctx, &cr, status)
 
 	case len(assessment.doomed) == 0 && surgeActive:
-		return r.reconcileScaleBack(ctx, &cr, target, status, assessment, base, req)
+		return r.reconcileScaleBack(ctx, &cr, target, status, assessment, desiredBase, req)
 
 	default:
 		return r.reconcileDoomed(ctx, &cr, target, status, assessment, base, surgeActive, surgeReady, relaxReason, ttlExpired, req)
@@ -247,6 +262,7 @@ func (r *UnderstudyReconciler) reconcileScaleBack(ctx context.Context, cr *appsv
 	status.LastReleaseTime = &now
 	status.BlockedSince = nil
 	status.Phase = appsv1alpha1.PhaseIdle
+	setBaselineCondition(&status, cr, base)
 	metrics.UntrackBlocked(req.String())
 	r.event(cr, corev1.EventTypeNormal, "ScaledBack", "Release",
 		fmt.Sprintf("predicament over; scaled %s back to %d replicas", target.GetName(), base))
@@ -264,10 +280,12 @@ func (r *UnderstudyReconciler) reconcileDoomed(ctx context.Context, cr *appsv1al
 	}
 	metrics.TrackBlocked(req.String(), status.BlockedSince.Time)
 
-	if !surgeActive {
+	if !surgeActive || cr.Spec.BaselineReplicas != nil && target.Replicas() != base+cr.SurgeReplicasOrDefault() {
 		if err := target.PatchReplicas(ctx, r.Client, base+cr.SurgeReplicasOrDefault(), &base); err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+	if !surgeActive {
 		now := metav1.Now()
 		status.LastSurgeTime = &now
 		class := signal.VoluntaryUnbounded
@@ -366,6 +384,22 @@ func setProtectedCondition(status *appsv1alpha1.UnderstudyStatus, cr *appsv1alph
 		}
 	}
 	setCond(status, cr, appsv1alpha1.ConditionProtected, boolToStatus(mode != appsv1alpha1.HoldOff && relaxReason == ""), reason, msg)
+}
+
+func setBaselineCondition(status *appsv1alpha1.UnderstudyStatus, cr *appsv1alpha1.Understudy, base int32) {
+	if cr.Spec.BaselineReplicas == nil {
+		status.BaselineReplicas = nil
+		meta.RemoveStatusCondition(&status.Conditions, appsv1alpha1.ConditionBaselineApplied)
+		return
+	}
+	status.BaselineReplicas = ptr.To(base)
+	if *cr.Spec.BaselineReplicas != base {
+		setCond(status, cr, appsv1alpha1.ConditionBaselineApplied, metav1.ConditionFalse,
+			"HandoverInProgress", fmt.Sprintf("baseline %d is pending; handover retains baseline %d", *cr.Spec.BaselineReplicas, base))
+		return
+	}
+	setCond(status, cr, appsv1alpha1.ConditionBaselineApplied, metav1.ConditionTrue,
+		"Applied", fmt.Sprintf("baseline %d is applied; effective replicas may include a temporary surge", base))
 }
 
 func (r *UnderstudyReconciler) patchStatus(ctx context.Context, cr *appsv1alpha1.Understudy, status appsv1alpha1.UnderstudyStatus) error {
@@ -487,14 +521,14 @@ func boolToStatus(b bool) metav1.ConditionStatus {
 }
 
 func statusEqual(a, b *appsv1alpha1.UnderstudyStatus) bool {
-	if a.Phase != b.Phase || a.Mode != b.Mode || !timePtrEqual(a.LastSurgeTime, b.LastSurgeTime) ||
+	if !ptr.Equal(a.BaselineReplicas, b.BaselineReplicas) || a.Phase != b.Phase || a.Mode != b.Mode || !timePtrEqual(a.LastSurgeTime, b.LastSurgeTime) ||
 		!timePtrEqual(a.LastReleaseTime, b.LastReleaseTime) || !timePtrEqual(a.BlockedSince, b.BlockedSince) ||
 		len(a.Conditions) != len(b.Conditions) {
 		return false
 	}
 	for i := range a.Conditions {
 		ca, cb := a.Conditions[i], b.Conditions[i]
-		if ca.Type != cb.Type || ca.Status != cb.Status || ca.Reason != cb.Reason || ca.Message != cb.Message {
+		if ca.Type != cb.Type || ca.Status != cb.Status || ca.Reason != cb.Reason || ca.Message != cb.Message || ca.ObservedGeneration != cb.ObservedGeneration {
 			return false
 		}
 	}
