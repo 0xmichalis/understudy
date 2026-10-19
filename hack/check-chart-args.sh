@@ -22,8 +22,18 @@ status=0
 for pair in templates/deployment.yaml:manager templates/sentinel.yaml:sentinel; do
   template="${pair%%:*}"
   binary="${pair#*:}"
+  if ! rendered="$(rendered_args "$template")"; then
+    echo "error: could not render args from $template" >&2
+    status=1
+    continue
+  fi
+  if [[ -z "$rendered" ]]; then
+    echo "error: $template rendered no args for $binary" >&2
+    status=1
+    continue
+  fi
   args=()
-  while IFS= read -r arg; do args+=("$arg"); done < <(rendered_args "$template")
+  while IFS= read -r arg; do args+=("$arg"); done <<< "$rendered"
   if ! output="$("$bin/$binary" "${args[@]}" -h 2>&1)"; then
     echo "error: $template passes $binary args it does not accept: ${args[*]}" >&2
     echo "$output" | head -n 1 >&2
